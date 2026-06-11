@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { Activity, Contact, Opportunity } from "../types";
-import { subscribeActivities, subscribeContacts, subscribeOpportunities } from "./store";
+import type { Account, Activity, Contact, Opportunity } from "../types";
+import { subscribeAccounts, subscribeActivities, subscribeContacts, subscribeOpportunities } from "./store";
 
 export function useOpportunities() {
   const [opps, setOpps] = useState<Opportunity[] | null>(null);
@@ -21,4 +21,11 @@ export function useContacts() {
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => subscribeContacts(setContacts, setError), []);
   return { contacts, error };
+}
+
+export function useAccounts() {
+  const [accounts, setAccounts] = useState<Account[] | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+  useEffect(() => subscribeAccounts(setAccounts, setError), []);
+  return { accounts, error };
 }

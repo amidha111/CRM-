@@ -25,5 +25,10 @@ service cloud.firestore {
       allow read, create, update: if isAllowed();
       allow delete: if false;        // deleting would orphan contactIds on deals
     }
+
+    match /accounts/{accountId} {
+      allow read, create, update: if isAllowed();
+      allow delete: if false;        // deleting would orphan accountId lookups
+    }
   }
 }

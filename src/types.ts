@@ -63,10 +63,22 @@ export interface NextAction {
   createdAt: Date;
 }
 
+export interface Account {
+  id: string;
+  name: string;
+  industry: string | null;
+  website: string | null;
+  phone: string | null;
+  notes: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Opportunity {
   id: string;
   name: string;
-  account: string;
+  accountId: string | null; // null only on legacy docs created before accounts existed
+  account: string; // denormalized account name
   owner: string;
   amount: number;
   stage: Stage;
@@ -124,7 +136,8 @@ export interface Activity {
 export interface Contact {
   id: string;
   name: string;
-  company: string;
+  accountId: string | null;
+  accountName: string; // denormalized account name ("" when unaffiliated)
   title: string | null;
   email: string | null;
   phone: string | null;
@@ -139,15 +152,36 @@ export interface Actor {
 }
 
 /** Input shapes for write operations */
+
+/** Link an existing account or create one inline (SF-style lookup). */
+export type AccountRefInput =
+  | { accountId: string; name: string }
+  | { accountId: null; name: string };
+
 export interface NewOpportunityInput {
   name: string;
-  account: string;
+  account: AccountRefInput;
   owner: string;
   amount: number;
   stage: Stage;
   closeDate: Date;
   firstAction: { text: string; dueDate: Date };
   stakeholder: StakeholderInput;
+}
+
+export interface NewAccountInput {
+  name: string;
+  industry?: string;
+  website?: string;
+  phone?: string;
+}
+
+export interface NewContactInput {
+  name: string;
+  account: AccountRefInput | null;
+  title?: string;
+  email?: string;
+  phone?: string;
 }
 
 export type StakeholderInput = {

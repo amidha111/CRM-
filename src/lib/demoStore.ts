@@ -5,10 +5,14 @@
 import {
   ROLE_LABELS,
   STAGE_LABELS,
+  type Account,
+  type AccountRefInput,
   type Activity,
   type ActivityType,
   type Actor,
   type Contact,
+  type NewAccountInput,
+  type NewContactInput,
   type NewOpportunityInput,
   type Opportunity,
   type Stage,
@@ -21,17 +25,25 @@ const id = (p: string) => `${p}_${seq++}`;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000);
 
+const accounts: Account[] = [
+  { id: "a_acme", name: "Acme Corp", industry: "Manufacturing", website: "acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
+  { id: "a_globex", name: "Globex Ltd", industry: "Technology", website: "globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
+  { id: "a_soylent", name: "Soylent Corp", industry: "Consumer Goods", website: null, phone: null, notes: "", createdAt: daysAgo(50), updatedAt: daysAgo(6) },
+  { id: "a_initech", name: "Initech", industry: "Financial Services", website: null, phone: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
+  { id: "a_hooli", name: "Hooli", industry: "Technology", website: "hooli.com", phone: null, notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
+];
+
 const contacts: Contact[] = [
-  { id: "c_priya", name: "Priya Shah", company: "Acme Corp", title: "CFO", email: "priya@acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
-  { id: "c_jane", name: "Jane Doe", company: "Acme Corp", title: "VP Engineering", email: "jane@acme.com", phone: null, notes: "", createdAt: daysAgo(38), updatedAt: daysAgo(5) },
-  { id: "c_tom", name: "Tom Berenger", company: "Globex Ltd", title: "CTO", email: "tom@globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
-  { id: "c_amara", name: "Amara Okafor", company: "Initech", title: "Board member", email: null, phone: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
-  { id: "c_dev", name: "Dev Patel", company: "Hooli", title: "Head of Data", email: "dev@hooli.com", phone: null, notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
+  { id: "c_priya", name: "Priya Shah", accountId: "a_acme", accountName: "Acme Corp", title: "CFO", email: "priya@acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
+  { id: "c_jane", name: "Jane Doe", accountId: "a_acme", accountName: "Acme Corp", title: "VP Engineering", email: "jane@acme.com", phone: null, notes: "", createdAt: daysAgo(38), updatedAt: daysAgo(5) },
+  { id: "c_tom", name: "Tom Berenger", accountId: "a_globex", accountName: "Globex Ltd", title: "CTO", email: "tom@globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
+  { id: "c_amara", name: "Amara Okafor", accountId: "a_initech", accountName: "Initech", title: "Board member", email: null, phone: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
+  { id: "c_dev", name: "Dev Patel", accountId: "a_hooli", accountName: "Hooli", title: "Head of Data", email: "dev@hooli.com", phone: null, notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
 ];
 
 const opportunities: Opportunity[] = [
   {
-    id: "o_acme", name: "Enterprise Expansion", account: "Acme Corp", owner: "Amit", amount: 120000,
+    id: "o_acme", name: "Enterprise Expansion", accountId: "a_acme", account: "Acme Corp", owner: "Amit", amount: 120000,
     stage: "proposal", closeDate: daysAhead(20), notes: "Q3 budget confirmed.",
     nextAction: { text: "Send revised SOW", dueDate: daysAgo(0), createdAt: daysAgo(2) },
     contactRoles: [
@@ -42,7 +54,7 @@ const opportunities: Opportunity[] = [
     createdAt: daysAgo(35), updatedAt: daysAgo(0),
   },
   {
-    id: "o_globex", name: "Cloud Migration Phase 2", account: "Globex Ltd", owner: "Amit", amount: 85000,
+    id: "o_globex", name: "Cloud Migration Phase 2", accountId: "a_globex", account: "Globex Ltd", owner: "Amit", amount: 85000,
     stage: "negotiation", closeDate: daysAhead(12), notes: "",
     nextAction: { text: "Book technical demo", dueDate: daysAhead(1), createdAt: daysAgo(1) },
     contactRoles: [{ contactId: "c_tom", name: "Tom Berenger", role: "decision_maker", isPrimary: true }],
@@ -50,7 +62,7 @@ const opportunities: Opportunity[] = [
     createdAt: daysAgo(28), updatedAt: daysAgo(1),
   },
   {
-    id: "o_soylent", name: "Security Suite Licensing", account: "Soylent Corp", owner: "Linisha", amount: 42500,
+    id: "o_soylent", name: "Security Suite Licensing", accountId: "a_soylent", account: "Soylent Corp", owner: "Linisha", amount: 42500,
     stage: "closed_won", closeDate: daysAgo(6), notes: "",
     nextAction: null,
     contactRoles: [{ contactId: "c_priya", name: "Priya Shah", role: "shareholder", isPrimary: true }],
@@ -58,7 +70,7 @@ const opportunities: Opportunity[] = [
     createdAt: daysAgo(50), updatedAt: daysAgo(6),
   },
   {
-    id: "o_initech", name: "Infrastructure Audit", account: "Initech", owner: "Amit", amount: 12000,
+    id: "o_initech", name: "Infrastructure Audit", accountId: "a_initech", account: "Initech", owner: "Amit", amount: 12000,
     stage: "discovery", closeDate: daysAhead(35), notes: "",
     nextAction: { text: "Confirm budget owner", dueDate: daysAhead(2), createdAt: daysAgo(3) },
     contactRoles: [
@@ -69,7 +81,7 @@ const opportunities: Opportunity[] = [
     createdAt: daysAgo(20), updatedAt: daysAgo(19),
   },
   {
-    id: "o_hooli", name: "Data Analytics Pilot", account: "Hooli", owner: "Linisha", amount: 24000,
+    id: "o_hooli", name: "Data Analytics Pilot", accountId: "a_hooli", account: "Hooli", owner: "Linisha", amount: 24000,
     stage: "qualification", closeDate: daysAhead(45), notes: "",
     nextAction: { text: "Book discovery call", dueDate: daysAgo(2), createdAt: daysAgo(10) },
     contactRoles: [{ contactId: "c_dev", name: "Dev Patel", role: "technical_evaluator", isPrimary: true }],
@@ -115,14 +127,17 @@ type Listener<T> = (v: T[]) => void;
 const oppListeners = new Set<Listener<Opportunity>>();
 const actListeners = new Set<Listener<Activity>>();
 const contactListeners = new Set<Listener<Contact>>();
+const accountListeners = new Set<Listener<Account>>();
 
 function emit() {
   const opps = [...opportunities].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   const acts = [...activities].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const cons = [...contacts].sort((a, b) => a.name.localeCompare(b.name));
+  const accs = [...accounts].sort((a, b) => a.name.localeCompare(b.name));
   oppListeners.forEach((l) => l(opps));
   actListeners.forEach((l) => l(acts));
   contactListeners.forEach((l) => l(cons));
+  accountListeners.forEach((l) => l(accs));
 }
 
 export function subscribeOpportunities(cb: Listener<Opportunity>) {
@@ -139,6 +154,11 @@ export function subscribeContacts(cb: Listener<Contact>) {
   contactListeners.add(cb);
   cb([...contacts].sort((a, b) => a.name.localeCompare(b.name)));
   return () => contactListeners.delete(cb);
+}
+export function subscribeAccounts(cb: Listener<Account>) {
+  accountListeners.add(cb);
+  cb([...accounts].sort((a, b) => a.name.localeCompare(b.name)));
+  return () => accountListeners.delete(cb);
 }
 
 function pushActivity(
@@ -166,13 +186,24 @@ function pushActivity(
   });
 }
 
-function resolveContact(input: StakeholderInput): string {
+function resolveAccount(input: AccountRefInput): { accountId: string; accountName: string } {
+  if (input.accountId) return { accountId: input.accountId, accountName: input.name };
+  const aid = id("a");
+  accounts.push({
+    id: aid, name: input.name, industry: null, website: null, phone: null, notes: "",
+    createdAt: new Date(), updatedAt: new Date(),
+  });
+  return { accountId: aid, accountName: input.name };
+}
+
+function resolveContact(input: StakeholderInput, account: { accountId: string | null; accountName: string }): string {
   if (input.contactId) return input.contactId;
   const cid = id("c");
   contacts.push({
     id: cid,
     name: input.name,
-    company: "",
+    accountId: account.accountId,
+    accountName: account.accountName,
     title: ("title" in input && input.title) || null,
     email: ("email" in input && input.email) || null,
     phone: null,
@@ -190,12 +221,14 @@ function find(oppId: string): Opportunity {
 }
 
 export async function createOpportunity(input: NewOpportunityInput, actor: Actor): Promise<string> {
-  const contactId = resolveContact(input.stakeholder);
+  const account = resolveAccount(input.account);
+  const contactId = resolveContact(input.stakeholder, account);
   const oppId = id("o");
   opportunities.push({
     id: oppId,
     name: input.name,
-    account: input.account,
+    accountId: account.accountId,
+    account: account.accountName,
     owner: input.owner,
     amount: input.amount,
     stage: input.stage,
@@ -207,8 +240,8 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
     createdAt: new Date(),
     updatedAt: new Date(),
   });
-  const ref = { id: oppId, name: input.name, account: input.account };
-  pushActivity(ref, actor, "created", `Created opportunity "${input.name}" for ${input.account}`);
+  const ref = { id: oppId, name: input.name, account: account.accountName };
+  pushActivity(ref, actor, "created", `Created opportunity "${input.name}" for ${account.accountName}`);
   pushActivity(ref, actor, "action_set", `Set next action "${input.firstAction.text}"`);
   emit();
   return oppId;
@@ -274,7 +307,7 @@ export async function logTouch(
 
 export async function addStakeholder(opp: Opportunity, input: StakeholderInput, actor: Actor): Promise<void> {
   const o = find(opp.id);
-  const contactId = resolveContact(input);
+  const contactId = resolveContact(input, { accountId: o.accountId, accountName: o.account });
   if (o.contactIds.includes(contactId)) return;
   if (input.isPrimary) o.contactRoles = o.contactRoles.map((r) => ({ ...r, isPrimary: false }));
   o.contactRoles = [...o.contactRoles, { contactId, name: input.name, role: input.role, isPrimary: input.isPrimary }];
@@ -293,4 +326,26 @@ export async function removeStakeholder(opp: Opportunity, contactId: string, act
   o.updatedAt = new Date();
   pushActivity(o, actor, "stakeholder_removed", `Removed ${role.name}`, { contactId });
   emit();
+}
+
+export async function createAccount(input: NewAccountInput): Promise<string> {
+  const aid = id("a");
+  accounts.push({
+    id: aid, name: input.name, industry: input.industry || null, website: input.website || null,
+    phone: input.phone || null, notes: "", createdAt: new Date(), updatedAt: new Date(),
+  });
+  emit();
+  return aid;
+}
+
+export async function createContact(input: NewContactInput): Promise<string> {
+  const account = input.account ? resolveAccount(input.account) : null;
+  const cid = id("c");
+  contacts.push({
+    id: cid, name: input.name, accountId: account?.accountId ?? null, accountName: account?.accountName ?? "",
+    title: input.title || null, email: input.email || null, phone: input.phone || null, notes: "",
+    createdAt: new Date(), updatedAt: new Date(),
+  });
+  emit();
+  return cid;
 }

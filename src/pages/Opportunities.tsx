@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { OPEN_STAGES, STAGE_LABELS, type Actor, type Contact, type Activity, type Opportunity, type Stage } from "../types";
+import { OPEN_STAGES, STAGE_LABELS, type Account, type Actor, type Contact, type Activity, type Opportunity, type Stage } from "../types";
 import { completeNextAction } from "../lib/store";
 import { formatMoney, relativeTime } from "../lib/format";
 import { Avatar, DueBadge, EmptyCard, NbaChip, PrimaryButton, StagePill, inputCls } from "../components/ui";
@@ -10,6 +10,7 @@ export function OpportunitiesPage({
   opps,
   activities,
   contacts,
+  accounts,
   actor,
   owners,
   selectedId,
@@ -18,6 +19,7 @@ export function OpportunitiesPage({
   opps: Opportunity[];
   activities: Activity[];
   contacts: Contact[];
+  accounts: Account[];
   actor: Actor;
   owners: string[];
   selectedId: string | null;
@@ -189,7 +191,13 @@ export function OpportunitiesPage({
         />
       )}
       {showNew && (
-        <NewOpportunityModal contacts={contacts} owners={owners} actor={actor} onClose={() => setShowNew(false)} />
+        <NewOpportunityModal
+          contacts={contacts}
+          accounts={accounts}
+          owners={owners}
+          actor={actor}
+          onClose={() => setShowNew(false)}
+        />
       )}
       {logOpp && <LogActivityModal opp={logOpp} actor={actor} onClose={() => setLogFor(null)} />}
       {stakeholderOpp && (

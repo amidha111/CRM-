@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, DEMO } from "./firebase";
-import { useActivities, useContacts, useOpportunities } from "./lib/hooks";
+import { useAccounts, useActivities, useContacts, useOpportunities } from "./lib/hooks";
 import type { Actor } from "./types";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import { OpportunitiesPage } from "./pages/Opportunities";
+import { AccountsPage } from "./pages/Accounts";
+import { ContactsPage } from "./pages/Contacts";
 import { ActivityLogPage } from "./pages/ActivityLog";
 import { DashboardPage } from "./pages/Dashboard";
 import { SettingsPage } from "./pages/Settings";
@@ -20,6 +22,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
   const { contacts } = useContacts();
+  const { accounts } = useAccounts();
 
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
 
@@ -33,7 +36,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
     return <SignIn denied />;
   }
 
-  if (!opps || !activities || !contacts) {
+  if (!opps || !activities || !contacts || !accounts) {
     return (
       <div className="dot-grid flex min-h-screen items-center justify-center">
         <p className="text-muted">Loading workspace…</p>
@@ -54,10 +57,30 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
           opps={opps}
           activities={activities}
           contacts={contacts}
+          accounts={accounts}
           actor={actor}
           owners={owners}
           selectedId={selectedOppId}
           onSelect={setSelectedOppId}
+        />
+      )}
+      {page === "accounts" && (
+        <AccountsPage
+          accounts={accounts}
+          opps={opps}
+          contacts={contacts}
+          actor={actor}
+          owners={owners}
+          onOpenOpp={openOpp}
+        />
+      )}
+      {page === "contacts" && (
+        <ContactsPage
+          contacts={contacts}
+          accounts={accounts}
+          opps={opps}
+          activities={activities}
+          onOpenOpp={openOpp}
         />
       )}
       {page === "activity" && <ActivityLogPage activities={activities} opps={opps} onOpenOpp={openOpp} />}

@@ -14,11 +14,15 @@ import { db, DEMO } from "../firebase";
 import {
   ROLE_LABELS,
   STAGE_LABELS,
+  type Account,
+  type AccountRefInput,
   type Activity,
   type ActivityType,
   type Actor,
   type Contact,
   type ContactRole,
+  type NewAccountInput,
+  type NewContactInput,
   type NewOpportunityInput,
   type Opportunity,
   type Stage,
@@ -43,7 +47,8 @@ function snapToOpp(snap: DocumentSnapshot): Opportunity {
   return {
     id: snap.id,
     name: d.name,
-    account: d.account,
+    accountId: d.accountId ?? null,
+    account: d.accountName ?? d.account ?? "", // legacy docs stored a plain `account` string
     owner: d.owner,
     amount: d.amount,
     stage: d.stage,
@@ -88,9 +93,24 @@ function snapToContact(snap: DocumentSnapshot): Contact {
   return {
     id: snap.id,
     name: d.name,
-    company: d.company ?? "",
+    accountId: d.accountId ?? null,
+    accountName: d.accountName ?? d.company ?? "", // `company` was the pre-accounts field
     title: d.title ?? null,
     email: d.email ?? null,
+    phone: d.phone ?? null,
+    notes: d.notes ?? "",
+    createdAt: toDate(d.createdAt),
+    updatedAt: toDate(d.updatedAt),
+  };
+}
+
+function snapToAccount(snap: DocumentSnapshot): Account {
+  const d = snap.data({ serverTimestamps: "estimate" })!;
+  return {
+    id: snap.id,
+    name: d.name,
+    industry: d.industry ?? null,
+    website: d.website ?? null,
     phone: d.phone ?? null,
     notes: d.notes ?? "",
     createdAt: toDate(d.createdAt),
@@ -139,6 +159,19 @@ export function subscribeContacts(
   );
 }
 
+export function subscribeAccounts(
+  cb: (accounts: Account[]) => void,
+  onError: (e: Error) => void,
+): Unsub {
+  if (DEMO) return demo.subscribeAccounts(cb);
+  const q = query(collection(db, "accounts"), orderBy("name"));
+  return onSnapshot(
+    q,
+    (qs: QuerySnapshot) => cb(qs.docs.map(snapToAccount)),
+    onError,
+  );
+}
+
 // ---------- mutation helpers ----------
 
 function activityDoc(
@@ -169,16 +202,40 @@ function newActivityRef() {
   return doc(collection(db, "activities"));
 }
 
-/** Resolve a StakeholderInput to a contactId, creating the contact in the batch if new. */
+/** Resolve an AccountRefInput to an id+name, creating the account in the batch if new. */
+function resolveAccount(
+  batch: ReturnType<typeof writeBatch>,
+  input: AccountRefInput,
+): { accountId: string; accountName: string } {
+  if (input.accountId) return { accountId: input.accountId, accountName: input.name };
+  const ref = doc(collection(db, "accounts"));
+  batch.set(ref, {
+    name: input.name,
+    industry: null,
+    website: null,
+    phone: null,
+    notes: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return { accountId: ref.id, accountName: input.name };
+}
+
+/**
+ * Resolve a StakeholderInput to a contactId, creating the contact in the batch
+ * if new. New contacts inherit the deal's account (SF: Contact.AccountId).
+ */
 function resolveContact(
   batch: ReturnType<typeof writeBatch>,
   input: StakeholderInput,
+  account: { accountId: string | null; accountName: string },
 ): string {
   if (input.contactId) return input.contactId;
   const ref = doc(collection(db, "contacts"));
   batch.set(ref, {
     name: input.name,
-    company: "",
+    accountId: account.accountId,
+    accountName: account.accountName,
     title: ("title" in input && input.title) || null,
     email: ("email" in input && input.email) || null,
     phone: null,
@@ -194,7 +251,8 @@ function resolveContact(
 export async function createOpportunity(input: NewOpportunityInput, actor: Actor): Promise<string> {
   if (DEMO) return demo.createOpportunity(input, actor);
   const batch = writeBatch(db);
-  const contactId = resolveContact(batch, input.stakeholder);
+  const account = resolveAccount(batch, input.account);
+  const contactId = resolveContact(batch, input.stakeholder, account);
   const oppRef = doc(collection(db, "opportunities"));
   const role: ContactRole = {
     contactId,
@@ -204,7 +262,8 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
   };
   batch.set(oppRef, {
     name: input.name,
-    account: input.account,
+    accountId: account.accountId,
+    accountName: account.accountName,
     owner: input.owner,
     amount: input.amount,
     stage: input.stage,
@@ -220,8 +279,8 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  const oppRef2 = { id: oppRef.id, name: input.name, account: input.account };
-  batch.set(newActivityRef(), activityDoc(oppRef2, actor, "created", `Created opportunity "${input.name}" for ${input.account}`));
+  const oppRef2 = { id: oppRef.id, name: input.name, account: account.accountName };
+  batch.set(newActivityRef(), activityDoc(oppRef2, actor, "created", `Created opportunity "${input.name}" for ${account.accountName}`));
   batch.set(
     newActivityRef(),
     activityDoc(oppRef2, actor, "action_set", `Set next action "${input.firstAction.text}"`),
@@ -324,7 +383,7 @@ export async function addStakeholder(
 ): Promise<void> {
   if (DEMO) return demo.addStakeholder(opp, input, actor);
   const batch = writeBatch(db);
-  const contactId = resolveContact(batch, input);
+  const contactId = resolveContact(batch, input, { accountId: opp.accountId, accountName: opp.account });
   if (opp.contactIds.includes(contactId)) return;
   let roles = opp.contactRoles.map((r) =>
     input.isPrimary ? { ...r, isPrimary: false } : r,
@@ -342,6 +401,43 @@ export async function addStakeholder(
     }),
   );
   await batch.commit();
+}
+
+export async function createAccount(input: NewAccountInput): Promise<string> {
+  if (DEMO) return demo.createAccount(input);
+  const batch = writeBatch(db);
+  const ref = doc(collection(db, "accounts"));
+  batch.set(ref, {
+    name: input.name,
+    industry: input.industry || null,
+    website: input.website || null,
+    phone: input.phone || null,
+    notes: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return ref.id;
+}
+
+export async function createContact(input: NewContactInput): Promise<string> {
+  if (DEMO) return demo.createContact(input);
+  const batch = writeBatch(db);
+  const account = input.account ? resolveAccount(batch, input.account) : null;
+  const ref = doc(collection(db, "contacts"));
+  batch.set(ref, {
+    name: input.name,
+    accountId: account?.accountId ?? null,
+    accountName: account?.accountName ?? "",
+    title: input.title || null,
+    email: input.email || null,
+    phone: input.phone || null,
+    notes: "",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return ref.id;
 }
 
 export async function removeStakeholder(opp: Opportunity, contactId: string, actor: Actor): Promise<void> {

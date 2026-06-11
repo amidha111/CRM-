@@ -1,9 +1,11 @@
 import { Avatar } from "./ui";
 
-export type Page = "opportunities" | "activity" | "dashboard" | "settings";
+export type Page = "opportunities" | "accounts" | "contacts" | "activity" | "dashboard" | "settings";
 
 const NAV: { key: Page; label: string; icon: string }[] = [
   { key: "opportunities", label: "Opportunities", icon: "◎" },
+  { key: "accounts", label: "Accounts", icon: "▣" },
+  { key: "contacts", label: "Contacts", icon: "◉" },
   { key: "activity", label: "Activity Log", icon: "↺" },
   { key: "dashboard", label: "Dashboard", icon: "▦" },
   { key: "settings", label: "Settings", icon: "⚙" },
