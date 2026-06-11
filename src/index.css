@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-canvas: #fbf6e9;
+  --color-navy: #1b2a4a;
+  --color-navy-soft: #26365c;
+  --color-gold: #fed573;
+  --color-gold-soft: #fff3d6;
+  --color-gold-deep: #5a4300;
+  --color-ink: #1b2a4a;
+  --color-muted: #5c6478;
+  --color-line: #e5e7eb;
+  --color-success: #2e7d4f;
+  --color-success-soft: #d7f0e0;
+  --color-danger: #93000a;
+  --color-danger-soft: #ffdad6;
+}
+
+.dot-grid {
+  background-color: var(--color-canvas);
+  background-image: radial-gradient(circle, rgb(0 0 0 / 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.card {
+  background: white;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.05);
+}

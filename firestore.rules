@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allowlist is hardcoded here rather than in a config doc: there is no
+    // bootstrap problem (no doc must exist before first sign-in), and adding
+    // a user is a one-line rules redeploy for a two-person workspace.
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email_verified
+        && request.auth.token.email in ['amidha111@gmail.com'];
+    }
+
+    match /opportunities/{oppId} {
+      allow read, create, update: if isAllowed();
+      allow delete: if false;        // deals close, they don't disappear
+    }
+
+    match /activities/{activityId} {
+      allow read, create: if isAllowed();
+      allow update, delete: if false; // append-only history
+    }
+
+    match /contacts/{contactId} {
+      allow read, create, update: if isAllowed();
+      allow delete: if false;        // deleting would orphan contactIds on deals
+    }
+  }
+}
