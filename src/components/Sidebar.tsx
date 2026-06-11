@@ -24,9 +24,9 @@ export function Sidebar({
     <aside className="flex h-screen w-[240px] shrink-0 flex-col bg-navy text-white">
       <div className="flex items-center gap-2.5 px-5 py-5">
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gold text-lg font-extrabold text-navy">
-          F
+          D
         </span>
-        <span className="text-lg font-bold tracking-tight">FounderFlow</span>
+        <span className="text-lg font-bold tracking-tight">Darma Foundry</span>
       </div>
       <nav className="mt-2 flex flex-col gap-1 px-3">
         {NAV.map((item) => {
