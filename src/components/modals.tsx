@@ -124,14 +124,16 @@ export function NewOpportunityModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid =
-    name.trim() &&
-    account.trim() &&
-    amount &&
-    closeDate &&
-    stakeholder.name.trim() &&
-    actionText.trim() &&
-    actionDue;
+  const missing = [
+    !name.trim() && "Opportunity Name",
+    !account.trim() && "Account",
+    !stakeholder.name.trim() && "Primary Stakeholder",
+    !amount && "Amount",
+    !closeDate && "Expected Close",
+    !actionText.trim() && "First Next Best Action",
+    !actionDue && "action due date",
+  ].filter(Boolean) as string[];
+  const valid = missing.length === 0;
 
   async function submit() {
     if (!valid || busy) return;
@@ -232,7 +234,12 @@ export function NewOpportunityModal({
         </div>
 
         {error && <p className="text-sm text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          {!valid && (
+            <p className="mr-auto text-xs text-muted">
+              Still needed: <span className="font-medium text-gold-deep">{missing.join(", ")}</span>
+            </p>
+          )}
           <GhostButton onClick={onClose}>Cancel</GhostButton>
           <PrimaryButton onClick={submit} disabled={!valid || busy}>
             {busy ? "Creating…" : "+ Create Opportunity"}
