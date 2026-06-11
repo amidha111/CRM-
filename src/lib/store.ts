@@ -1,10 +1,12 @@
 import {
   collection,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   limit,
+  where,
   writeBatch,
   serverTimestamp,
   type DocumentSnapshot,
@@ -27,6 +29,9 @@ import {
   type Opportunity,
   type Stage,
   type StakeholderInput,
+  type UpdateAccountInput,
+  type UpdateContactInput,
+  type UpdateOpportunityInput,
 } from "../types";
 import * as demo from "./demoStore";
 
@@ -451,6 +456,141 @@ export async function createContact(input: NewContactInput): Promise<string> {
   });
   await batch.commit();
   return ref.id;
+}
+
+export async function updateOpportunity(
+  opp: Opportunity,
+  input: UpdateOpportunityInput,
+  actor: Actor,
+): Promise<void> {
+  if (DEMO) return demo.updateOpportunity(opp, input, actor);
+  const batch = writeBatch(db);
+  const account = input.account
+    ? resolveAccount(batch, input.account)
+    : { accountId: null, accountName: "" };
+  if (input.stage !== opp.stage) {
+    batch.set(
+      newActivityRef(),
+      activityDoc(
+        { id: opp.id, name: input.name, account: account.accountName },
+        actor,
+        "stage_change",
+        `Moved from ${STAGE_LABELS[opp.stage]} to ${STAGE_LABELS[input.stage]}`,
+        { fromStage: opp.stage, toStage: input.stage },
+      ),
+    );
+  }
+  const closed = input.stage === "closed_won" || input.stage === "closed_lost";
+  batch.update(doc(db, "opportunities", opp.id), {
+    name: input.name,
+    accountId: account.accountId,
+    accountName: account.accountName,
+    owner: input.owner,
+    amount: input.amount,
+    stage: input.stage,
+    closeDate: input.closeDate,
+    notes: input.notes,
+    ...(closed ? { nextAction: null } : {}),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+}
+
+export async function updateAccount(account: Account, input: UpdateAccountInput): Promise<void> {
+  if (DEMO) return demo.updateAccount(account, input);
+  const batch = writeBatch(db);
+  batch.update(doc(db, "accounts", account.id), {
+    name: input.name,
+    industry: input.industry,
+    website: input.website,
+    phone: input.phone,
+    notes: input.notes,
+    updatedAt: serverTimestamp(),
+  });
+  if (input.name !== account.name) {
+    // fan out the denormalized name to deals and contacts at this account
+    const [oppSnap, contactSnap] = await Promise.all([
+      getDocs(query(collection(db, "opportunities"), where("accountId", "==", account.id))),
+      getDocs(query(collection(db, "contacts"), where("accountId", "==", account.id))),
+    ]);
+    oppSnap.docs.forEach((d) => batch.update(d.ref, { accountName: input.name }));
+    contactSnap.docs.forEach((d) => batch.update(d.ref, { accountName: input.name }));
+  }
+  await batch.commit();
+}
+
+export async function updateContact(contact: Contact, input: UpdateContactInput): Promise<void> {
+  if (DEMO) return demo.updateContact(contact, input);
+  const batch = writeBatch(db);
+  const account = input.account ? resolveAccount(batch, input.account) : null;
+  batch.update(doc(db, "contacts", contact.id), {
+    name: input.name,
+    accountId: account?.accountId ?? null,
+    accountName: account?.accountName ?? "",
+    title: input.title,
+    email: input.email,
+    phone: input.phone,
+    notes: input.notes,
+    updatedAt: serverTimestamp(),
+  });
+  if (input.name !== contact.name) {
+    // fan out the denormalized name into contactRoles on linked deals
+    const oppSnap = await getDocs(
+      query(collection(db, "opportunities"), where("contactIds", "array-contains", contact.id)),
+    );
+    oppSnap.docs.forEach((d) => {
+      const roles = (d.data().contactRoles ?? []) as ContactRole[];
+      batch.update(d.ref, {
+        contactRoles: roles.map((r) => (r.contactId === contact.id ? { ...r, name: input.name } : r)),
+      });
+    });
+  }
+  await batch.commit();
+}
+
+export async function deleteOpportunity(opp: Opportunity): Promise<void> {
+  if (DEMO) return demo.deleteOpportunity(opp);
+  const batch = writeBatch(db);
+  // cascade: a deleted deal takes its timeline with it (SF deletes related activities too)
+  const acts = await getDocs(query(collection(db, "activities"), where("oppId", "==", opp.id)));
+  acts.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(doc(db, "opportunities", opp.id));
+  await batch.commit();
+}
+
+export async function deleteAccount(account: Account): Promise<void> {
+  if (DEMO) return demo.deleteAccount(account);
+  const [oppSnap, contactSnap] = await Promise.all([
+    getDocs(query(collection(db, "opportunities"), where("accountId", "==", account.id))),
+    getDocs(query(collection(db, "contacts"), where("accountId", "==", account.id))),
+  ]);
+  if (!oppSnap.empty || !contactSnap.empty) {
+    throw new Error(
+      `This account still has ${oppSnap.size} deal(s) and ${contactSnap.size} contact(s). Delete or reassign them first.`,
+    );
+  }
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "accounts", account.id));
+  await batch.commit();
+}
+
+export async function deleteContact(contact: Contact): Promise<void> {
+  if (DEMO) return demo.deleteContact(contact);
+  const batch = writeBatch(db);
+  // unlink from every deal first so no contactRoles point at a missing record
+  const oppSnap = await getDocs(
+    query(collection(db, "opportunities"), where("contactIds", "array-contains", contact.id)),
+  );
+  oppSnap.docs.forEach((d) => {
+    const data = d.data();
+    const roles = (data.contactRoles ?? []) as ContactRole[];
+    batch.update(d.ref, {
+      contactRoles: roles.filter((r) => r.contactId !== contact.id),
+      contactIds: ((data.contactIds ?? []) as string[]).filter((id) => id !== contact.id),
+    });
+  });
+  batch.delete(doc(db, "contacts", contact.id));
+  await batch.commit();
 }
 
 export async function removeStakeholder(opp: Opportunity, contactId: string, actor: Actor): Promise<void> {

@@ -76,8 +76,10 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
           opp={opp}
           activities={activities!}
           contacts={contacts!}
+          accounts={accounts!}
           opps={opps!}
           actor={actor}
+          owners={owners}
           onBack={backToList}
           onOpenRecord={openRecord}
         />
@@ -106,6 +108,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
         contact={contact}
         opps={opps!}
         activities={activities!}
+        accounts={accounts!}
         onBack={backToList}
         onOpenRecord={openRecord}
       />

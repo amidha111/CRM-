@@ -184,6 +184,33 @@ export interface NewContactInput {
   phone?: string;
 }
 
+export interface UpdateOpportunityInput {
+  name: string;
+  account: AccountRefInput | null;
+  owner: string;
+  amount: number;
+  stage: Stage;
+  closeDate: Date | null;
+  notes: string;
+}
+
+export interface UpdateAccountInput {
+  name: string;
+  industry: string | null;
+  website: string | null;
+  phone: string | null;
+  notes: string;
+}
+
+export interface UpdateContactInput {
+  name: string;
+  account: AccountRefInput | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string;
+}
+
 export type StakeholderInput = {
   role: ContactRoleKind;
   isPrimary: boolean;

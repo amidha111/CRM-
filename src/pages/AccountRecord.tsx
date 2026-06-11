@@ -3,7 +3,8 @@ import { OPEN_STAGES, type Account, type Actor, type Contact, type Opportunity }
 import { formatMoney, relativeTime } from "../lib/format";
 import { Avatar, GhostButton, PrimaryButton, StagePill } from "../components/ui";
 import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } from "../components/record";
-import { NewContactModal, NewOpportunityModal } from "../components/modals";
+import { EditAccountModal, NewContactModal, NewOpportunityModal } from "../components/modals";
+import { deleteAccount } from "../lib/store";
 
 export function AccountRecordPage({
   account,
@@ -26,6 +27,18 @@ export function AccountRecordPage({
 }) {
   const [showNewOpp, setShowNewOpp] = useState(false);
   const [showNewContact, setShowNewContact] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete account "${account.name}"? This cannot be undone.`)) return;
+    try {
+      await deleteAccount(account);
+      onBack();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }
 
   const related = useMemo(() => {
     const deals = opps.filter((o) => o.accountId === account.id);
@@ -50,7 +63,14 @@ export function AccountRecordPage({
           title={account.name}
           actions={
             <>
+              <button
+                onClick={handleDelete}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
+              >
+                Delete
+              </button>
               <GhostButton onClick={() => setShowNewContact(true)}>+ Contact</GhostButton>
+              <GhostButton onClick={() => setShowEdit(true)}>Edit</GhostButton>
               <PrimaryButton onClick={() => setShowNewOpp(true)}>+ Opportunity</PrimaryButton>
             </>
           }
@@ -76,6 +96,10 @@ export function AccountRecordPage({
             { label: "Open Deals", value: String(related.openDeals) },
           ]}
         />
+
+        {deleteError && (
+          <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">{deleteError}</div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
           <RecordSection
@@ -129,6 +153,7 @@ export function AccountRecordPage({
         </div>
       </div>
 
+      {showEdit && <EditAccountModal account={account} onClose={() => setShowEdit(false)} />}
       {showNewOpp && (
         <NewOpportunityModal
           contacts={contacts}

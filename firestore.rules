@@ -12,23 +12,20 @@ service cloud.firestore {
     }
 
     match /opportunities/{oppId} {
-      allow read, create, update: if isAllowed();
-      allow delete: if false;        // deals close, they don't disappear
+      allow read, create, update, delete: if isAllowed();
     }
 
     match /activities/{activityId} {
-      allow read, create: if isAllowed();
-      allow update, delete: if false; // append-only history
+      allow read, create, delete: if isAllowed(); // delete only for record cascade
+      allow update: if false;                     // entries are never edited
     }
 
     match /contacts/{contactId} {
-      allow read, create, update: if isAllowed();
-      allow delete: if false;        // deleting would orphan contactIds on deals
+      allow read, create, update, delete: if isAllowed();
     }
 
     match /accounts/{accountId} {
-      allow read, create, update: if isAllowed();
-      allow delete: if false;        // deleting would orphan accountId lookups
+      allow read, create, update, delete: if isAllowed();
     }
   }
 }

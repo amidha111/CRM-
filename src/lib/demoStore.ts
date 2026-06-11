@@ -5,6 +5,9 @@
 import {
   ROLE_LABELS,
   STAGE_LABELS,
+  type UpdateAccountInput,
+  type UpdateContactInput,
+  type UpdateOpportunityInput,
   type Account,
   type AccountRefInput,
   type Activity,
@@ -354,4 +357,83 @@ export async function createContact(input: NewContactInput): Promise<string> {
   });
   emit();
   return cid;
+}
+
+export async function updateOpportunity(opp: Opportunity, input: UpdateOpportunityInput, actor: Actor): Promise<void> {
+  const o = find(opp.id);
+  const account = input.account ? resolveAccount(input.account) : { accountId: null, accountName: "" };
+  if (input.stage !== o.stage) {
+    pushActivity({ id: o.id, name: input.name, account: account.accountName }, actor, "stage_change",
+      `Moved from ${STAGE_LABELS[o.stage]} to ${STAGE_LABELS[input.stage]}`,
+      { fromStage: o.stage, toStage: input.stage });
+  }
+  o.name = input.name;
+  o.accountId = account.accountId;
+  o.account = account.accountName;
+  o.owner = input.owner;
+  o.amount = input.amount;
+  o.stage = input.stage;
+  o.closeDate = input.closeDate;
+  o.notes = input.notes;
+  if (input.stage === "closed_won" || input.stage === "closed_lost") o.nextAction = null;
+  o.updatedAt = new Date();
+  emit();
+}
+
+export async function updateAccount(account: Account, input: UpdateAccountInput): Promise<void> {
+  const a = accounts.find((x) => x.id === account.id);
+  if (!a) throw new Error("account not found");
+  if (input.name !== a.name) {
+    opportunities.forEach((o) => { if (o.accountId === a.id) o.account = input.name; });
+    contacts.forEach((c) => { if (c.accountId === a.id) c.accountName = input.name; });
+  }
+  Object.assign(a, { name: input.name, industry: input.industry, website: input.website, phone: input.phone, notes: input.notes, updatedAt: new Date() });
+  emit();
+}
+
+export async function updateContact(contact: Contact, input: UpdateContactInput): Promise<void> {
+  const c = contacts.find((x) => x.id === contact.id);
+  if (!c) throw new Error("contact not found");
+  const account = input.account ? resolveAccount(input.account) : null;
+  if (input.name !== c.name) {
+    opportunities.forEach((o) => {
+      o.contactRoles = o.contactRoles.map((r) => (r.contactId === c.id ? { ...r, name: input.name } : r));
+    });
+  }
+  Object.assign(c, {
+    name: input.name,
+    accountId: account?.accountId ?? null,
+    accountName: account?.accountName ?? "",
+    title: input.title, email: input.email, phone: input.phone, notes: input.notes,
+    updatedAt: new Date(),
+  });
+  emit();
+}
+
+export async function deleteOpportunity(opp: Opportunity): Promise<void> {
+  const i = opportunities.findIndex((x) => x.id === opp.id);
+  if (i >= 0) opportunities.splice(i, 1);
+  for (let j = activities.length - 1; j >= 0; j--) if (activities[j].oppId === opp.id) activities.splice(j, 1);
+  emit();
+}
+
+export async function deleteAccount(account: Account): Promise<void> {
+  const deals = opportunities.filter((o) => o.accountId === account.id).length;
+  const people = contacts.filter((c) => c.accountId === account.id).length;
+  if (deals || people) {
+    throw new Error(`This account still has ${deals} deal(s) and ${people} contact(s). Delete or reassign them first.`);
+  }
+  const i = accounts.findIndex((x) => x.id === account.id);
+  if (i >= 0) accounts.splice(i, 1);
+  emit();
+}
+
+export async function deleteContact(contact: Contact): Promise<void> {
+  opportunities.forEach((o) => {
+    o.contactRoles = o.contactRoles.filter((r) => r.contactId !== contact.id);
+    o.contactIds = o.contactIds.filter((id) => id !== contact.id);
+  });
+  const i = contacts.findIndex((x) => x.id === contact.id);
+  if (i >= 0) contacts.splice(i, 1);
+  emit();
 }

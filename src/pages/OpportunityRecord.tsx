@@ -3,17 +3,18 @@ import {
   ROLE_LABELS,
   STAGES,
   STAGE_LABELS,
+  type Account,
   type Activity,
   type Actor,
   type Contact,
   type Opportunity,
   type Stage,
 } from "../types";
-import { changeStage, completeNextAction, removeStakeholder, setNextAction } from "../lib/store";
+import { changeStage, completeNextAction, deleteOpportunity, removeStakeholder, setNextAction } from "../lib/store";
 import { formatDate, formatMoney, relativeTime } from "../lib/format";
 import { Avatar, DueBadge, Field, GhostButton, PrimaryButton, StagePill, inputCls } from "../components/ui";
 import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } from "../components/record";
-import { AddStakeholderModal, LogActivityModal } from "../components/modals";
+import { AddStakeholderModal, EditOpportunityModal, LogActivityModal } from "../components/modals";
 
 function parseLocalDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -77,16 +78,20 @@ export function OpportunityRecordPage({
   opp,
   activities,
   contacts,
+  accounts,
   opps,
   actor,
+  owners,
   onBack,
   onOpenRecord,
 }: {
   opp: Opportunity;
   activities: Activity[];
   contacts: Contact[];
+  accounts: Account[];
   opps: Opportunity[];
   actor: Actor;
+  owners: string[];
   onBack: () => void;
   onOpenRecord: OpenRecord;
 }) {
@@ -96,6 +101,13 @@ export function OpportunityRecordPage({
   const [nbaDue, setNbaDue] = useState("");
   const [showLog, setShowLog] = useState(false);
   const [showAddStakeholder, setShowAddStakeholder] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${opp.name}"? Its activity history is deleted with it. This cannot be undone.`)) return;
+    await deleteOpportunity(opp);
+    onBack();
+  }
   const closed = opp.stage === "closed_won" || opp.stage === "closed_lost";
 
   const oppCountByContact = useMemo(() => {
@@ -123,7 +135,14 @@ export function OpportunityRecordPage({
           title={opp.name}
           actions={
             <>
+              <button
+                onClick={handleDelete}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
+              >
+                Delete
+              </button>
               <GhostButton onClick={() => setShowAddStakeholder(true)}>+ Stakeholder</GhostButton>
+              <GhostButton onClick={() => setShowEdit(true)}>Edit</GhostButton>
               <PrimaryButton onClick={() => setShowLog(true)}>Log Activity</PrimaryButton>
             </>
           }
@@ -297,6 +316,9 @@ export function OpportunityRecordPage({
       </div>
 
       {showLog && <LogActivityModal opp={opp} actor={actor} onClose={() => setShowLog(false)} />}
+      {showEdit && (
+        <EditOpportunityModal opp={opp} accounts={accounts} owners={owners} actor={actor} onClose={() => setShowEdit(false)} />
+      )}
       {showAddStakeholder && (
         <AddStakeholderModal opp={opp} contacts={contacts} actor={actor} onClose={() => setShowAddStakeholder(false)} />
       )}

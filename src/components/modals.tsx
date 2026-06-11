@@ -12,8 +12,19 @@ import {
   type Stage,
   type StakeholderInput,
 } from "../types";
-import { createAccount, createContact, createOpportunity, logTouch, addStakeholder } from "../lib/store";
+import {
+  createAccount,
+  createContact,
+  createOpportunity,
+  logTouch,
+  addStakeholder,
+  updateAccount,
+  updateContact,
+  updateOpportunity,
+} from "../lib/store";
 import { Avatar, Field, GhostButton, Modal, PrimaryButton, inputCls } from "./ui";
+import { STAGES } from "../types";
+import type { UpdateAccountInput, UpdateContactInput } from "../types";
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABELS) as [ContactRoleKind, string][];
 
@@ -21,6 +32,16 @@ function parseLocalDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
   return new Date(y!, m! - 1, d!, 12); // noon avoids TZ edge cases
 }
+
+function toDateInput(d: Date | null): string {
+  if (!d) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Mandatory fields render with a red border until filled. */
+const reqCls = (filled: boolean) =>
+  filled ? inputCls : `${inputCls} border-danger ring-2 ring-danger/20`;
 
 export type LookupValue = { id: string | null; name: string };
 
@@ -226,8 +247,8 @@ export function NewOpportunityModal({
   return (
     <Modal title="New Opportunity" onClose={onClose}>
       <div className="flex flex-col gap-4">
-        <Field label="Opportunity Name">
-          <input className={inputCls} placeholder="e.g., Enterprise Expansion" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="Opportunity Name" required>
+          <input className={reqCls(!!name.trim())} placeholder="e.g., Enterprise Expansion" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Account (optional)">
@@ -256,9 +277,9 @@ export function NewOpportunityModal({
           </Field>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Field label="Amount">
+          <Field label="Amount" required>
             <input
-              className={inputCls}
+              className={reqCls(!!amount)}
               type="number"
               min="0"
               placeholder="0"
@@ -341,8 +362,8 @@ export function NewAccountModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="New Account" onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
-        <Field label="Account Name">
-          <input className={inputCls} placeholder="Company name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="Account Name" required>
+          <input className={reqCls(!!name.trim())} placeholder="Company name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Industry (optional)">
@@ -406,8 +427,8 @@ export function NewContactModal({
   return (
     <Modal title="New Contact" onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
-        <Field label="Name">
-          <input className={inputCls} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Field label="Name" required>
+          <input className={reqCls(!!name.trim())} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Account (optional)">
           <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
@@ -584,7 +605,7 @@ export function AddStakeholderModal({
   return (
     <Modal title="Add Stakeholder" subtitle={opp.account ? `${opp.name} — ${opp.account}` : opp.name} onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
-        <Field label="Contact">
+        <Field label="Contact" required>
           <ContactPicker contacts={contacts} value={stakeholder} onChange={setStakeholder} />
           {alreadyLinked && <p className="mt-1 text-xs text-danger">Already a stakeholder on this deal.</p>}
         </Field>
@@ -617,6 +638,252 @@ export function AddStakeholderModal({
           <GhostButton onClick={onClose}>Cancel</GhostButton>
           <PrimaryButton onClick={submit} disabled={!valid || busy}>
             {busy ? "Adding…" : "Add to deal"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export function EditOpportunityModal({
+  opp,
+  accounts,
+  owners,
+  actor,
+  onClose,
+}: {
+  opp: Opportunity;
+  accounts: Account[];
+  owners: string[];
+  actor: Actor;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(opp.name);
+  const [account, setAccount] = useState<LookupValue>({ id: opp.accountId, name: opp.account });
+  const [owner, setOwner] = useState(opp.owner);
+  const [amount, setAmount] = useState(String(opp.amount));
+  const [stage, setStage] = useState<Stage>(opp.stage);
+  const [closeDate, setCloseDate] = useState(toDateInput(opp.closeDate));
+  const [notes, setNotes] = useState(opp.notes);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const valid = !!name.trim() && !!amount;
+  const ownerOptions = owners.includes(owner) ? owners : [...owners, owner];
+
+  async function submit() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateOpportunity(
+        opp,
+        {
+          name: name.trim(),
+          account: account.name.trim() ? toAccountRef(account) : null,
+          owner,
+          amount: Number(amount),
+          stage,
+          closeDate: closeDate ? parseLocalDate(closeDate) : null,
+          notes: notes.trim(),
+        },
+        actor,
+      );
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit Opportunity" subtitle={opp.name} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <Field label="Opportunity Name" required>
+          <input className={reqCls(!!name.trim())} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Account (optional)">
+            <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
+          </Field>
+          <Field label="Owner">
+            <select className={inputCls} value={owner} onChange={(e) => setOwner(e.target.value)}>
+              {ownerOptions.map((o) => (
+                <option key={o}>{o}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Amount" required>
+            <input
+              className={reqCls(!!amount)}
+              type="number"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+          <Field label="Stage">
+            <select className={inputCls} value={stage} onChange={(e) => setStage(e.target.value as Stage)}>
+              {STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {STAGE_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Expected Close (optional)">
+            <input className={inputCls} type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Notes (optional)">
+          <textarea
+            className={`${inputCls} min-h-20 resize-y`}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </Field>
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton onClick={submit} disabled={!valid || busy}>
+            {busy ? "Saving…" : "Save"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export function EditAccountModal({ account, onClose }: { account: Account; onClose: () => void }) {
+  const [name, setName] = useState(account.name);
+  const [industry, setIndustry] = useState(account.industry ?? "");
+  const [website, setWebsite] = useState(account.website ?? "");
+  const [phone, setPhone] = useState(account.phone ?? "");
+  const [notes, setNotes] = useState(account.notes);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const input: UpdateAccountInput = {
+        name: name.trim(),
+        industry: industry.trim() || null,
+        website: website.trim() || null,
+        phone: phone.trim() || null,
+        notes: notes.trim(),
+      };
+      await updateAccount(account, input);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit Account" subtitle={account.name} onClose={onClose} width={480}>
+      <div className="flex flex-col gap-4">
+        <Field label="Account Name" required>
+          <input className={reqCls(!!name.trim())} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Industry (optional)">
+            <input className={inputCls} value={industry} onChange={(e) => setIndustry(e.target.value)} />
+          </Field>
+          <Field label="Phone (optional)">
+            <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Website (optional)">
+          <input className={inputCls} value={website} onChange={(e) => setWebsite(e.target.value)} />
+        </Field>
+        <Field label="Notes (optional)">
+          <textarea className={`${inputCls} min-h-20 resize-y`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton onClick={submit} disabled={!name.trim() || busy}>
+            {busy ? "Saving…" : "Save"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export function EditContactModal({
+  contact,
+  accounts,
+  onClose,
+}: {
+  contact: Contact;
+  accounts: Account[];
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(contact.name);
+  const [account, setAccount] = useState<LookupValue>({ id: contact.accountId, name: contact.accountName });
+  const [title, setTitle] = useState(contact.title ?? "");
+  const [email, setEmail] = useState(contact.email ?? "");
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [notes, setNotes] = useState(contact.notes);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const input: UpdateContactInput = {
+        name: name.trim(),
+        account: account.name.trim() ? toAccountRef(account) : null,
+        title: title.trim() || null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        notes: notes.trim(),
+      };
+      await updateContact(contact, input);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit Contact" subtitle={contact.name} onClose={onClose} width={480}>
+      <div className="flex flex-col gap-4">
+        <Field label="Name" required>
+          <input className={reqCls(!!name.trim())} value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field label="Account (optional)">
+          <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
+        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Title (optional)">
+            <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} />
+          </Field>
+          <Field label="Email (optional)">
+            <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Phone (optional)">
+          <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </Field>
+        <Field label="Notes (optional)">
+          <textarea className={`${inputCls} min-h-20 resize-y`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton onClick={submit} disabled={!name.trim() || busy}>
+            {busy ? "Saving…" : "Save"}
           </PrimaryButton>
         </div>
       </div>

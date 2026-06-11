@@ -121,10 +121,21 @@ export function Modal({
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">{label}</span>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+        {required && <span className="ml-0.5 text-danger">*</span>}
+      </span>
       {children}
     </label>
   );

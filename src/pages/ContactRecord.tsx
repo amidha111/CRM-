@@ -1,23 +1,38 @@
-import { useMemo } from "react";
-import { ROLE_LABELS, type Activity, type Contact, type Opportunity } from "../types";
+import { useMemo, useState } from "react";
+import { ROLE_LABELS, type Account, type Activity, type Contact, type Opportunity } from "../types";
 import { formatMoney, relativeTime } from "../lib/format";
 import { StagePill } from "../components/ui";
 import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } from "../components/record";
+import { GhostButton } from "../components/ui";
+import { EditContactModal } from "../components/modals";
+import { deleteContact } from "../lib/store";
 
 export function ContactRecordPage({
   contact,
   opps,
   activities,
+  accounts,
   onBack,
   onOpenRecord,
 }: {
   contact: Contact;
   opps: Opportunity[];
   activities: Activity[];
+  accounts: Account[];
   onBack: () => void;
   onOpenRecord: OpenRecord;
 }) {
+  const [showEdit, setShowEdit] = useState(false);
   const deals = useMemo(() => opps.filter((o) => o.contactIds.includes(contact.id)), [opps, contact.id]);
+
+  async function handleDelete() {
+    const linked = deals.length
+      ? ` They will be removed as a stakeholder from ${deals.length} deal(s).`
+      : "";
+    if (!window.confirm(`Delete contact "${contact.name}"?${linked} This cannot be undone.`)) return;
+    await deleteContact(contact);
+    onBack();
+  }
   const involved = useMemo(() => activities.filter((a) => a.contactId === contact.id), [activities, contact.id]);
 
   return (
@@ -29,6 +44,17 @@ export function ContactRecordPage({
           icon="◉"
           entity="Contact"
           title={contact.name}
+          actions={
+            <>
+              <button
+                onClick={handleDelete}
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
+              >
+                Delete
+              </button>
+              <GhostButton onClick={() => setShowEdit(true)}>Edit</GhostButton>
+            </>
+          }
           highlights={[
             {
               label: "Account",
@@ -96,6 +122,8 @@ export function ContactRecordPage({
           </RecordSection>
         </div>
       </div>
+
+      {showEdit && <EditContactModal contact={contact} accounts={accounts} onClose={() => setShowEdit(false)} />}
     </div>
   );
 }
