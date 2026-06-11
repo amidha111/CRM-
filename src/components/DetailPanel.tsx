@@ -66,7 +66,7 @@ export function DetailPanel({
       <div className="border-b border-line p-6">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">{opp.account}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted">{opp.account || "No account"}</p>
             <h2 className="mt-1 text-2xl font-bold text-ink">{opp.name}</h2>
             <div className="mt-2 flex items-center gap-3">
               <StagePill stage={opp.stage} />
@@ -84,7 +84,7 @@ export function DetailPanel({
           </div>
           <div>
             <p className="text-xs text-muted">Close Date</p>
-            <p className="font-medium text-ink">{formatDate(opp.closeDate)}</p>
+            <p className="font-medium text-ink">{opp.closeDate ? formatDate(opp.closeDate) : "—"}</p>
           </div>
           <div>
             <p className="text-xs text-muted">Stage</p>

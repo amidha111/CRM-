@@ -123,7 +123,7 @@ export function DashboardPage({
                       onClick={() => onOpenOpp(o.id)}
                       className="block truncate text-left text-sm font-semibold text-ink hover:underline"
                     >
-                      {o.account}
+                      {o.account || o.name}
                     </button>
                     <p className="truncate text-xs text-muted">{o.nextAction!.text}</p>
                   </div>

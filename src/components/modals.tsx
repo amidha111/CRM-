@@ -181,14 +181,13 @@ export function NewOpportunityModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Only Name + Amount are required; the rest is optional, with one coupling:
+  // an action needs its due date (and vice versa) to mean anything.
   const missing = [
     !name.trim() && "Opportunity Name",
-    !account.name.trim() && "Account",
-    !stakeholder.name.trim() && "Primary Stakeholder",
     !amount && "Amount",
-    !closeDate && "Expected Close",
-    !actionText.trim() && "First Next Best Action",
-    !actionDue && "action due date",
+    actionText.trim() !== "" && !actionDue && "due date for the next action",
+    actionDue !== "" && !actionText.trim() && "text for the next action",
   ].filter(Boolean) as string[];
   const valid = missing.length === 0;
 
@@ -197,18 +196,22 @@ export function NewOpportunityModal({
     setBusy(true);
     setError(null);
     try {
-      const sh: StakeholderInput = stakeholder.id
-        ? { contactId: stakeholder.id, name: stakeholder.name, role, isPrimary: true }
-        : { contactId: null, name: stakeholder.name.trim(), role, isPrimary: true };
+      const sh: StakeholderInput | null = !stakeholder.name.trim()
+        ? null
+        : stakeholder.id
+          ? { contactId: stakeholder.id, name: stakeholder.name, role, isPrimary: true }
+          : { contactId: null, name: stakeholder.name.trim(), role, isPrimary: true };
       await createOpportunity(
         {
           name: name.trim(),
-          account: toAccountRef(account),
+          account: account.name.trim() ? toAccountRef(account) : null,
           owner,
           amount: Number(amount),
           stage,
-          closeDate: parseLocalDate(closeDate),
-          firstAction: { text: actionText.trim(), dueDate: parseLocalDate(actionDue) },
+          closeDate: closeDate ? parseLocalDate(closeDate) : null,
+          firstAction: actionText.trim()
+            ? { text: actionText.trim(), dueDate: parseLocalDate(actionDue) }
+            : null,
           stakeholder: sh,
         },
         actor,
@@ -227,7 +230,7 @@ export function NewOpportunityModal({
           <input className={inputCls} placeholder="e.g., Enterprise Expansion" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Account">
+          <Field label="Account (optional)">
             <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
           </Field>
           <Field label="Owner">
@@ -239,7 +242,7 @@ export function NewOpportunityModal({
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Primary Stakeholder">
+          <Field label="Primary Stakeholder (optional)">
             <ContactPicker contacts={contacts} value={stakeholder} onChange={setStakeholder} />
           </Field>
           <Field label="Role">
@@ -272,13 +275,15 @@ export function NewOpportunityModal({
               ))}
             </select>
           </Field>
-          <Field label="Expected Close">
+          <Field label="Expected Close (optional)">
             <input className={inputCls} type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
           </Field>
         </div>
 
         <div className="rounded-xl border border-gold bg-gold-soft/60 p-4">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gold-deep">★ First Next Best Action</p>
+          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gold-deep">
+            ★ First Next Best Action <span className="font-medium normal-case">(recommended)</span>
+          </p>
           <div className="grid grid-cols-[1fr_150px] gap-3">
             <input
               className={inputCls}
@@ -471,7 +476,7 @@ export function LogActivityModal({
   }
 
   return (
-    <Modal title="Log Activity" subtitle={`${opp.name} — ${opp.account}`} onClose={onClose}>
+    <Modal title="Log Activity" subtitle={opp.account ? `${opp.name} — ${opp.account}` : opp.name} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Field label="Activity Type">
           <div className="grid grid-cols-4 gap-2">
@@ -577,7 +582,7 @@ export function AddStakeholderModal({
   }
 
   return (
-    <Modal title="Add Stakeholder" subtitle={`${opp.name} — ${opp.account}`} onClose={onClose} width={480}>
+    <Modal title="Add Stakeholder" subtitle={opp.account ? `${opp.name} — ${opp.account}` : opp.name} onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
         <Field label="Contact">
           <ContactPicker contacts={contacts} value={stakeholder} onChange={setStakeholder} />

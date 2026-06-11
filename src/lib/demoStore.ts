@@ -221,8 +221,12 @@ function find(oppId: string): Opportunity {
 }
 
 export async function createOpportunity(input: NewOpportunityInput, actor: Actor): Promise<string> {
-  const account = resolveAccount(input.account);
-  const contactId = resolveContact(input.stakeholder, account);
+  const account = input.account ? resolveAccount(input.account) : { accountId: null, accountName: "" };
+  const roles = [];
+  if (input.stakeholder) {
+    const contactId = resolveContact(input.stakeholder, account);
+    roles.push({ contactId, name: input.stakeholder.name, role: input.stakeholder.role, isPrimary: true });
+  }
   const oppId = id("o");
   opportunities.push({
     id: oppId,
@@ -234,15 +238,17 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
     stage: input.stage,
     closeDate: input.closeDate,
     notes: "",
-    nextAction: { text: input.firstAction.text, dueDate: input.firstAction.dueDate, createdAt: new Date() },
-    contactRoles: [{ contactId, name: input.stakeholder.name, role: input.stakeholder.role, isPrimary: true }],
-    contactIds: [contactId],
+    nextAction: input.firstAction
+      ? { text: input.firstAction.text, dueDate: input.firstAction.dueDate, createdAt: new Date() }
+      : null,
+    contactRoles: roles,
+    contactIds: roles.map((r) => r.contactId),
     createdAt: new Date(),
     updatedAt: new Date(),
   });
   const ref = { id: oppId, name: input.name, account: account.accountName };
-  pushActivity(ref, actor, "created", `Created opportunity "${input.name}" for ${account.accountName}`);
-  pushActivity(ref, actor, "action_set", `Set next action "${input.firstAction.text}"`);
+  pushActivity(ref, actor, "created", `Created opportunity "${input.name}"${account.accountName ? ` for ${account.accountName}` : ""}`);
+  if (input.firstAction) pushActivity(ref, actor, "action_set", `Set next action "${input.firstAction.text}"`);
   emit();
   return oppId;
 }

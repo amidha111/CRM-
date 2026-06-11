@@ -105,7 +105,7 @@ export function OpportunitiesPage({
                   <NbaChip
                     key={o.id}
                     compact
-                    text={`${o.account} — ${o.nextAction!.text}`}
+                    text={`${o.account || o.name} — ${o.nextAction!.text}`}
                     due={o.nextAction!.dueDate}
                     onClick={() => setSelectedId(o.id)}
                     onDone={() => completeNextAction(o, null, actor)}
@@ -135,7 +135,7 @@ export function OpportunitiesPage({
                       className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-gold-soft/30"
                     >
                       <td className="px-5 py-4 font-semibold text-ink">{o.name}</td>
-                      <td className="px-3 py-4 text-muted">{o.account}</td>
+                      <td className="px-3 py-4 text-muted">{o.account || "—"}</td>
                       <td className="px-3 py-4">
                         <span className="flex items-center gap-2 text-ink">
                           <Avatar name={o.owner} size={24} />

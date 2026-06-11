@@ -77,12 +77,12 @@ export interface Account {
 export interface Opportunity {
   id: string;
   name: string;
-  accountId: string | null; // null only on legacy docs created before accounts existed
-  account: string; // denormalized account name
+  accountId: string | null; // null on legacy docs and account-less quick deals
+  account: string; // denormalized account name ("" when none)
   owner: string;
   amount: number;
   stage: Stage;
-  closeDate: Date;
+  closeDate: Date | null;
   notes: string;
   nextAction: NextAction | null;
   contactRoles: ContactRole[];
@@ -160,13 +160,13 @@ export type AccountRefInput =
 
 export interface NewOpportunityInput {
   name: string;
-  account: AccountRefInput;
+  account: AccountRefInput | null;
   owner: string;
   amount: number;
   stage: Stage;
-  closeDate: Date;
-  firstAction: { text: string; dueDate: Date };
-  stakeholder: StakeholderInput;
+  closeDate: Date | null;
+  firstAction: { text: string; dueDate: Date } | null;
+  stakeholder: StakeholderInput | null;
 }
 
 export interface NewAccountInput {

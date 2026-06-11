@@ -52,7 +52,7 @@ function snapToOpp(snap: DocumentSnapshot): Opportunity {
     owner: d.owner,
     amount: d.amount,
     stage: d.stage,
-    closeDate: toDate(d.closeDate),
+    closeDate: d.closeDate ? toDate(d.closeDate) : null,
     notes: d.notes ?? "",
     nextAction: d.nextAction
       ? {
@@ -251,15 +251,20 @@ function resolveContact(
 export async function createOpportunity(input: NewOpportunityInput, actor: Actor): Promise<string> {
   if (DEMO) return demo.createOpportunity(input, actor);
   const batch = writeBatch(db);
-  const account = resolveAccount(batch, input.account);
-  const contactId = resolveContact(batch, input.stakeholder, account);
+  const account = input.account
+    ? resolveAccount(batch, input.account)
+    : { accountId: null, accountName: "" };
+  const roles: ContactRole[] = [];
+  if (input.stakeholder) {
+    const contactId = resolveContact(batch, input.stakeholder, account);
+    roles.push({
+      contactId,
+      name: input.stakeholder.name,
+      role: input.stakeholder.role,
+      isPrimary: true,
+    });
+  }
   const oppRef = doc(collection(db, "opportunities"));
-  const role: ContactRole = {
-    contactId,
-    name: input.stakeholder.name,
-    role: input.stakeholder.role,
-    isPrimary: true,
-  };
   batch.set(oppRef, {
     name: input.name,
     accountId: account.accountId,
@@ -269,22 +274,30 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
     stage: input.stage,
     closeDate: input.closeDate,
     notes: "",
-    nextAction: {
-      text: input.firstAction.text,
-      dueDate: input.firstAction.dueDate,
-      createdAt: new Date(),
-    },
-    contactRoles: [role],
-    contactIds: [contactId],
+    nextAction: input.firstAction
+      ? { text: input.firstAction.text, dueDate: input.firstAction.dueDate, createdAt: new Date() }
+      : null,
+    contactRoles: roles,
+    contactIds: roles.map((r) => r.contactId),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   const oppRef2 = { id: oppRef.id, name: input.name, account: account.accountName };
-  batch.set(newActivityRef(), activityDoc(oppRef2, actor, "created", `Created opportunity "${input.name}" for ${account.accountName}`));
   batch.set(
     newActivityRef(),
-    activityDoc(oppRef2, actor, "action_set", `Set next action "${input.firstAction.text}"`),
+    activityDoc(
+      oppRef2,
+      actor,
+      "created",
+      `Created opportunity "${input.name}"${account.accountName ? ` for ${account.accountName}` : ""}`,
+    ),
   );
+  if (input.firstAction) {
+    batch.set(
+      newActivityRef(),
+      activityDoc(oppRef2, actor, "action_set", `Set next action "${input.firstAction.text}"`),
+    );
+  }
   await batch.commit();
   return oppRef.id;
 }
