@@ -5,20 +5,32 @@ import { useAccounts, useActivities, useContacts, useOpportunities } from "./lib
 import type { Actor } from "./types";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
+import type { OpenRecord } from "./components/record";
 import { OpportunitiesPage } from "./pages/Opportunities";
 import { AccountsPage } from "./pages/Accounts";
 import { ContactsPage } from "./pages/Contacts";
 import { ActivityLogPage } from "./pages/ActivityLog";
 import { DashboardPage } from "./pages/Dashboard";
 import { SettingsPage } from "./pages/Settings";
+import { OpportunityRecordPage } from "./pages/OpportunityRecord";
+import { AccountRecordPage } from "./pages/AccountRecord";
+import { ContactRecordPage } from "./pages/ContactRecord";
 
 function isPermissionDenied(e: Error | null): boolean {
   return !!e && /permission|insufficient/i.test(e.message);
 }
 
+type RecordRef = { type: "opportunity" | "account" | "contact"; id: string };
+
+const RECORD_HOME: Record<RecordRef["type"], Page> = {
+  opportunity: "opportunities",
+  account: "accounts",
+  contact: "contacts",
+};
+
 function Workspace({ user }: { user: { name: string; email: string; uid: string } }) {
   const [page, setPage] = useState<Page>("opportunities");
-  const [selectedOppId, setSelectedOppId] = useState<string | null>(null);
+  const [record, setRecord] = useState<RecordRef | null>(null);
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
   const { contacts } = useContacts();
@@ -44,48 +56,94 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
     );
   }
 
-  function openOpp(id: string) {
-    setSelectedOppId(id);
-    setPage("opportunities");
+  function navigate(p: Page) {
+    setPage(p);
+    setRecord(null);
   }
+
+  const openRecord: OpenRecord = (type, id) => {
+    setPage(RECORD_HOME[type]);
+    setRecord({ type, id });
+  };
+
+  function renderRecord(ref: RecordRef) {
+    const backToList = () => setRecord(null);
+    if (ref.type === "opportunity") {
+      const opp = opps!.find((o) => o.id === ref.id);
+      if (!opp) return null;
+      return (
+        <OpportunityRecordPage
+          opp={opp}
+          activities={activities!}
+          contacts={contacts!}
+          opps={opps!}
+          actor={actor}
+          onBack={backToList}
+          onOpenRecord={openRecord}
+        />
+      );
+    }
+    if (ref.type === "account") {
+      const account = accounts!.find((a) => a.id === ref.id);
+      if (!account) return null;
+      return (
+        <AccountRecordPage
+          account={account}
+          opps={opps!}
+          contacts={contacts!}
+          accounts={accounts!}
+          actor={actor}
+          owners={owners}
+          onBack={backToList}
+          onOpenRecord={openRecord}
+        />
+      );
+    }
+    const contact = contacts!.find((c) => c.id === ref.id);
+    if (!contact) return null;
+    return (
+      <ContactRecordPage
+        contact={contact}
+        opps={opps!}
+        activities={activities!}
+        onBack={backToList}
+        onOpenRecord={openRecord}
+      />
+    );
+  }
+
+  const recordView = record ? renderRecord(record) : null;
 
   return (
     <div className="dot-grid flex h-screen overflow-hidden">
-      <Sidebar page={page} onNavigate={setPage} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} />
-      {page === "opportunities" && (
-        <OpportunitiesPage
-          opps={opps}
-          activities={activities}
-          contacts={contacts}
-          accounts={accounts}
-          actor={actor}
-          owners={owners}
-          selectedId={selectedOppId}
-          onSelect={setSelectedOppId}
-        />
+      <Sidebar page={page} onNavigate={navigate} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} />
+      {recordView ?? (
+        <>
+          {page === "opportunities" && (
+            <OpportunitiesPage
+              opps={opps}
+              contacts={contacts}
+              accounts={accounts}
+              actor={actor}
+              owners={owners}
+              onOpenRecord={openRecord}
+            />
+          )}
+          {page === "accounts" && (
+            <AccountsPage accounts={accounts} opps={opps} contacts={contacts} onOpenRecord={openRecord} />
+          )}
+          {page === "contacts" && (
+            <ContactsPage contacts={contacts} accounts={accounts} opps={opps} onOpenRecord={openRecord} />
+          )}
+          {page === "activity" && (
+            <ActivityLogPage activities={activities} opps={opps} onOpenOpp={(id) => openRecord("opportunity", id)} />
+          )}
+          {page === "dashboard" && (
+            <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
+          )}
+          {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} />}
+        </>
       )}
-      {page === "accounts" && (
-        <AccountsPage
-          accounts={accounts}
-          opps={opps}
-          contacts={contacts}
-          actor={actor}
-          owners={owners}
-          onOpenOpp={openOpp}
-        />
-      )}
-      {page === "contacts" && (
-        <ContactsPage
-          contacts={contacts}
-          accounts={accounts}
-          opps={opps}
-          activities={activities}
-          onOpenOpp={openOpp}
-        />
-      )}
-      {page === "activity" && <ActivityLogPage activities={activities} opps={opps} onOpenOpp={openOpp} />}
-      {page === "dashboard" && <DashboardPage opps={opps} actor={actor} onOpenOpp={openOpp} />}
-      {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} />}
     </div>
   );
 }

@@ -1,46 +1,29 @@
 import { useMemo, useState } from "react";
-import { OPEN_STAGES, STAGE_LABELS, type Account, type Actor, type Contact, type Activity, type Opportunity, type Stage } from "../types";
+import { OPEN_STAGES, STAGE_LABELS, type Account, type Actor, type Contact, type Opportunity, type Stage } from "../types";
 import { completeNextAction } from "../lib/store";
 import { formatMoney, relativeTime } from "../lib/format";
 import { Avatar, DueBadge, EmptyCard, NbaChip, PrimaryButton, StagePill, inputCls } from "../components/ui";
-import { DetailPanel } from "../components/DetailPanel";
-import { AddStakeholderModal, LogActivityModal, NewOpportunityModal } from "../components/modals";
+import { NewOpportunityModal } from "../components/modals";
+import type { OpenRecord } from "../components/record";
 
 export function OpportunitiesPage({
   opps,
-  activities,
   contacts,
   accounts,
   actor,
   owners,
-  selectedId,
-  onSelect,
+  onOpenRecord,
 }: {
   opps: Opportunity[];
-  activities: Activity[];
   contacts: Contact[];
   accounts: Account[];
   actor: Actor;
   owners: string[];
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
+  onOpenRecord: OpenRecord;
 }) {
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState<Stage | "all" | "open">("open");
-  const setSelectedId = onSelect;
   const [showNew, setShowNew] = useState(false);
-  const [logFor, setLogFor] = useState<string | null>(null);
-  const [addStakeholderFor, setAddStakeholderFor] = useState<string | null>(null);
-
-  const selected = opps.find((o) => o.id === selectedId) ?? null;
-  const logOpp = opps.find((o) => o.id === logFor) ?? null;
-  const stakeholderOpp = opps.find((o) => o.id === addStakeholderFor) ?? null;
-
-  const oppCountByContact = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const o of opps) for (const id of o.contactIds) m.set(id, (m.get(id) ?? 0) + 1);
-    return m;
-  }, [opps]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -107,7 +90,7 @@ export function OpportunitiesPage({
                     compact
                     text={`${o.account || o.name} — ${o.nextAction!.text}`}
                     due={o.nextAction!.dueDate}
-                    onClick={() => setSelectedId(o.id)}
+                    onClick={() => onOpenRecord("opportunity", o.id)}
                     onDone={() => completeNextAction(o, null, actor)}
                   />
                 ))}
@@ -131,10 +114,12 @@ export function OpportunitiesPage({
                   {filtered.map((o) => (
                     <tr
                       key={o.id}
-                      onClick={() => setSelectedId(o.id)}
+                      onClick={() => onOpenRecord("opportunity", o.id)}
                       className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-gold-soft/30"
                     >
-                      <td className="px-5 py-4 font-semibold text-ink">{o.name}</td>
+                      <td className="px-5 py-4">
+                        <span className="font-semibold text-gold-deep hover:underline">{o.name}</span>
+                      </td>
                       <td className="px-3 py-4 text-muted">{o.account || "—"}</td>
                       <td className="px-3 py-4">
                         <span className="flex items-center gap-2 text-ink">
@@ -148,18 +133,18 @@ export function OpportunitiesPage({
                       </td>
                       <td className="px-3 py-4">
                         {o.nextAction ? (
-                          <NbaChip
-                            compact
-                            text={o.nextAction.text}
-                            onDone={() => completeNextAction(o, null, actor)}
-                          />
+                          <>
+                            <NbaChip
+                              compact
+                              text={o.nextAction.text}
+                              onDone={() => completeNextAction(o, null, actor)}
+                            />
+                            <div className="mt-1">
+                              <DueBadge due={o.nextAction.dueDate} />
+                            </div>
+                          </>
                         ) : (
                           <span className="text-muted">—</span>
-                        )}
-                        {o.nextAction && (
-                          <div className="mt-1">
-                            <DueBadge due={o.nextAction.dueDate} />
-                          </div>
                         )}
                       </td>
                       <td className="px-5 py-4 text-right text-xs text-muted">{relativeTime(o.updatedAt)}</td>
@@ -179,17 +164,6 @@ export function OpportunitiesPage({
         )}
       </div>
 
-      {selected && (
-        <DetailPanel
-          opp={selected}
-          activities={activities}
-          oppCountByContact={oppCountByContact}
-          actor={actor}
-          onClose={() => setSelectedId(null)}
-          onLogActivity={() => setLogFor(selected.id)}
-          onAddStakeholder={() => setAddStakeholderFor(selected.id)}
-        />
-      )}
       {showNew && (
         <NewOpportunityModal
           contacts={contacts}
@@ -197,15 +171,6 @@ export function OpportunitiesPage({
           owners={owners}
           actor={actor}
           onClose={() => setShowNew(false)}
-        />
-      )}
-      {logOpp && <LogActivityModal opp={logOpp} actor={actor} onClose={() => setLogFor(null)} />}
-      {stakeholderOpp && (
-        <AddStakeholderModal
-          opp={stakeholderOpp}
-          contacts={contacts}
-          actor={actor}
-          onClose={() => setAddStakeholderFor(null)}
         />
       )}
     </div>
