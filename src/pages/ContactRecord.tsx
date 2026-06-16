@@ -36,8 +36,8 @@ export function ContactRecordPage({
   const involved = useMemo(() => activities.filter((a) => a.contactId === contact.id), [activities, contact.id]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 p-8">
+    <div className="page-frame">
+      <div className="flex flex-col gap-4">
         <Breadcrumb list="Contacts" onBack={onBack} current={contact.name} />
 
         <RecordHeader
@@ -48,7 +48,7 @@ export function ContactRecordPage({
             <>
               <button
                 onClick={handleDelete}
-                className="rounded-lg px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
+                className="rounded-md px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
               >
                 Delete
               </button>
@@ -69,6 +69,16 @@ export function ContactRecordPage({
             { label: "Title", value: contact.title ?? "—" },
             { label: "Email", value: contact.email ?? "—" },
             { label: "Phone", value: contact.phone ?? "—" },
+            {
+              label: "LinkedIn",
+              value: contact.linkedinUrl ? (
+                <a href={contact.linkedinUrl} target="_blank" rel="noreferrer" className="text-gold-deep underline">
+                  Profile
+                </a>
+              ) : (
+                "—"
+              ),
+            },
           ]}
         />
 
@@ -81,7 +91,7 @@ export function ContactRecordPage({
                 return (
                   <div
                     key={o.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2.5"
+                    className="flex items-center justify-between gap-2 rounded-md border border-line bg-paper px-3 py-2.5 hover:bg-tone/70"
                   >
                     <span className="min-w-0">
                       <span className="flex items-center gap-1.5">

@@ -22,6 +22,7 @@ import {
   updateContact,
   updateOpportunity,
 } from "../lib/store";
+import { analyzeMeetTranscript, type MeetAnalysis } from "../lib/meetAgent";
 import { Avatar, Field, GhostButton, Modal, PrimaryButton, inputCls } from "./ui";
 import { STAGES } from "../types";
 import type { UpdateAccountInput, UpdateContactInput } from "../types";
@@ -86,7 +87,7 @@ function LookupPicker({
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
       {open && value.name.trim() && (
-        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-line bg-white shadow-lg">
+        <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-md border border-line bg-paper shadow-lg">
           {matches.map((c) => (
             <button
               type="button"
@@ -172,6 +173,27 @@ export function AccountPicker({
 
 function toAccountRef(v: LookupValue): AccountRefInput {
   return v.id ? { accountId: v.id, name: v.name } : { accountId: null, name: v.name.trim() };
+}
+
+function contactDisplayName(firstName: string, lastName: string): string {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+}
+
+function listBlock(title: string, items: string[]): string {
+  return items.length ? `\n\n${title}\n${items.map((item) => `- ${item}`).join("\n")}` : "";
+}
+
+function formatMeetNote(analysis: MeetAnalysis): string {
+  return [
+    analysis.summary,
+    analysis.customerNeed ? `\n\nCustomer need\n${analysis.customerNeed}` : "",
+    listBlock("Buying signals", analysis.buyingSignals),
+    listBlock("Risks / objections", analysis.risks),
+    listBlock("Action items", analysis.actionItems),
+    listBlock("Stakeholders mentioned", analysis.stakeholders),
+  ]
+    .join("")
+    .trim();
 }
 
 export function NewOpportunityModal({
@@ -276,7 +298,7 @@ export function NewOpportunityModal({
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr]">
           <Field label="Amount" required>
             <input
               className={reqCls(!!amount)}
@@ -296,16 +318,16 @@ export function NewOpportunityModal({
               ))}
             </select>
           </Field>
-          <Field label="Expected Close (optional)">
+          <Field label="Expected Close">
             <input className={inputCls} type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
           </Field>
         </div>
 
-        <div className="rounded-xl border border-gold bg-gold-soft/60 p-4">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gold-deep">
+        <div className="rounded-lg border border-gold/45 bg-gold-soft/70 p-4">
+          <p className="mb-3 font-mono text-[11px] font-bold uppercase tracking-wide text-gold-deep">
             ★ First Next Best Action <span className="font-medium normal-case">(recommended)</span>
           </p>
-          <div className="grid grid-cols-[1fr_150px] gap-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
             <input
               className={inputCls}
               placeholder="e.g., Book discovery call"
@@ -397,25 +419,31 @@ export function NewContactModal({
   onClose: () => void;
   initialAccount?: LookupValue;
 }) {
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [account, setAccount] = useState<LookupValue>(initialAccount ?? { id: null, name: "" });
   const [title, setTitle] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!name.trim() || busy) return;
+    if (!firstName.trim() || !lastName.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
+      const name = contactDisplayName(firstName, lastName);
       await createContact({
-        name: name.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name,
         account: account.name.trim() ? toAccountRef(account) : null,
         title: title.trim() || undefined,
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
+        linkedinUrl: linkedinUrl.trim() || undefined,
       });
       onClose();
     } catch (e) {
@@ -427,9 +455,24 @@ export function NewContactModal({
   return (
     <Modal title="New Contact" onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
-        <Field label="Name" required>
-          <input className={reqCls(!!name.trim())} placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First Name" required>
+            <input
+              className={reqCls(!!firstName.trim())}
+              placeholder="First name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          </Field>
+          <Field label="Last Name" required>
+            <input
+              className={reqCls(!!lastName.trim())}
+              placeholder="Last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </Field>
+        </div>
         <Field label="Account (optional)">
           <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
         </Field>
@@ -444,10 +487,19 @@ export function NewContactModal({
         <Field label="Phone (optional)">
           <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
+        <Field label="LinkedIn Profile (optional)">
+          <input
+            className={inputCls}
+            type="url"
+            placeholder="https://www.linkedin.com/in/name"
+            value={linkedinUrl}
+            onChange={(e) => setLinkedinUrl(e.target.value)}
+          />
+        </Field>
         {error && <p className="text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <PrimaryButton onClick={submit} disabled={!name.trim() || busy}>
+          <PrimaryButton onClick={submit} disabled={!firstName.trim() || !lastName.trim() || busy}>
             {busy ? "Creating…" : "+ Create Contact"}
           </PrimaryButton>
         </div>
@@ -500,13 +552,13 @@ export function LogActivityModal({
     <Modal title="Log Activity" subtitle={opp.account ? `${opp.name} — ${opp.account}` : opp.name} onClose={onClose}>
       <div className="flex flex-col gap-4">
         <Field label="Activity Type">
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {(["call", "email", "meeting", "note"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => setType(t)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium capitalize transition ${
+                className={`rounded-md border px-3 py-2 text-sm font-medium capitalize transition ${
                   type === t ? "border-gold bg-gold-soft text-ink" : "border-line text-muted hover:border-gold/60"
                 }`}
               >
@@ -527,14 +579,14 @@ export function LogActivityModal({
           <input className={inputCls} type="url" placeholder="https://…" value={link} onChange={(e) => setLink(e.target.value)} />
         </Field>
 
-        <div className="rounded-xl border border-gold bg-gold-soft/60 p-4">
-          <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gold-deep">★ Update Next Best Action</p>
+        <div className="rounded-lg border border-gold/45 bg-gold-soft/70 p-4">
+          <p className="mb-3 font-mono text-[11px] font-bold uppercase tracking-wide text-gold-deep">★ Update Next Best Action</p>
           {opp.nextAction && (
             <p className="mb-2 text-xs text-muted">
               Current: <span className="font-medium text-ink">{opp.nextAction.text}</span> — leave blank to keep it.
             </p>
           )}
-          <div className="grid grid-cols-[1fr_150px] gap-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
             <input
               className={inputCls}
               placeholder="e.g., Send revised pricing proposal"
@@ -552,6 +604,136 @@ export function LogActivityModal({
             {busy ? "Saving…" : updatingAction ? "Log Activity & Update" : "Log Activity"}
           </PrimaryButton>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+export function MeetTranscriptModal({
+  opp,
+  actor,
+  onClose,
+}: {
+  opp: Opportunity;
+  actor: Actor;
+  onClose: () => void;
+}) {
+  const [meetUrl, setMeetUrl] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [analysis, setAnalysis] = useState<MeetAnalysis | null>(null);
+  const [note, setNote] = useState("");
+  const [nextText, setNextText] = useState("");
+  const [nextDue, setNextDue] = useState("");
+  const [busy, setBusy] = useState<"analyze" | "apply" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function analyze() {
+    if (!transcript.trim() || busy) return;
+    setBusy("analyze");
+    setError(null);
+    try {
+      const result = await analyzeMeetTranscript({
+        opportunityName: opp.name,
+        accountName: opp.account,
+        transcript: transcript.trim(),
+      });
+      setAnalysis(result);
+      setNote(formatMeetNote(result));
+      setNextText(result.nextAction?.text ?? "");
+      setNextDue(result.nextAction?.dueDate ?? "");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to analyze transcript");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function apply() {
+    if (!analysis || !note.trim() || busy) return;
+    if ((nextText.trim() && !nextDue) || (!nextText.trim() && nextDue)) {
+      setError("Next action needs both text and due date.");
+      return;
+    }
+    setBusy("apply");
+    setError(null);
+    try {
+      await logTouch(
+        opp,
+        "meeting",
+        note.trim(),
+        meetUrl.trim() || null,
+        nextText.trim() ? { text: nextText.trim(), dueDate: parseLocalDate(nextDue) } : null,
+        actor,
+      );
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to write to CRM");
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Modal title="Process Meet Transcript" subtitle={opp.account ? `${opp.name} — ${opp.account}` : opp.name} onClose={onClose}>
+      <div className="flex flex-col gap-4">
+        <Field label="Meet URL (optional)">
+          <input
+            className={inputCls}
+            type="url"
+            placeholder="https://meet.google.com/..."
+            value={meetUrl}
+            onChange={(e) => setMeetUrl(e.target.value)}
+          />
+        </Field>
+
+        {!analysis ? (
+          <>
+            <Field label="Transcript">
+              <textarea
+                className={`${inputCls} min-h-64 resize-y font-mono text-xs leading-relaxed`}
+                placeholder="Paste the Google Meet transcript here..."
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+              />
+            </Field>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <GhostButton onClick={onClose}>Cancel</GhostButton>
+              <PrimaryButton onClick={analyze} disabled={!transcript.trim() || !!busy}>
+                {busy === "analyze" ? "Analyzing..." : "Analyze with DeepSeek"}
+              </PrimaryButton>
+            </div>
+          </>
+        ) : (
+          <>
+            <Field label="CRM Note">
+              <textarea
+                className={`${inputCls} min-h-56 resize-y leading-relaxed`}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </Field>
+            <div className="rounded-lg border border-gold/45 bg-gold-soft/70 p-4">
+              <p className="mb-3 font-mono text-[11px] font-bold uppercase tracking-wide text-gold-deep">Next Best Action</p>
+              <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
+                <input
+                  className={inputCls}
+                  placeholder="Optional next action"
+                  value={nextText}
+                  onChange={(e) => setNextText(e.target.value)}
+                />
+                <input className={inputCls} type="date" value={nextDue} onChange={(e) => setNextDue(e.target.value)} />
+              </div>
+            </div>
+            {error && <p className="text-sm text-danger">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <GhostButton onClick={() => setAnalysis(null)}>Back</GhostButton>
+              <GhostButton onClick={onClose}>Cancel</GhostButton>
+              <PrimaryButton onClick={apply} disabled={!note.trim() || !!busy}>
+                {busy === "apply" ? "Writing..." : "Write to CRM"}
+              </PrimaryButton>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -714,7 +896,7 @@ export function EditOpportunityModal({
             </select>
           </Field>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr]">
           <Field label="Amount" required>
             <input
               className={reqCls(!!amount)}
@@ -733,7 +915,7 @@ export function EditOpportunityModal({
               ))}
             </select>
           </Field>
-          <Field label="Expected Close (optional)">
+          <Field label="Expected Close">
             <input className={inputCls} type="date" value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
           </Field>
         </div>
@@ -826,26 +1008,32 @@ export function EditContactModal({
   accounts: Account[];
   onClose: () => void;
 }) {
-  const [name, setName] = useState(contact.name);
+  const [firstName, setFirstName] = useState(contact.firstName);
+  const [lastName, setLastName] = useState(contact.lastName);
   const [account, setAccount] = useState<LookupValue>({ id: contact.accountId, name: contact.accountName });
   const [title, setTitle] = useState(contact.title ?? "");
   const [email, setEmail] = useState(contact.email ?? "");
   const [phone, setPhone] = useState(contact.phone ?? "");
+  const [linkedinUrl, setLinkedinUrl] = useState(contact.linkedinUrl ?? "");
   const [notes, setNotes] = useState(contact.notes);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!name.trim() || busy) return;
+    if (!firstName.trim() || !lastName.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
+      const name = contactDisplayName(firstName, lastName);
       const input: UpdateContactInput = {
-        name: name.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        name,
         account: account.name.trim() ? toAccountRef(account) : null,
         title: title.trim() || null,
         email: email.trim() || null,
         phone: phone.trim() || null,
+        linkedinUrl: linkedinUrl.trim() || null,
         notes: notes.trim(),
       };
       await updateContact(contact, input);
@@ -859,9 +1047,14 @@ export function EditContactModal({
   return (
     <Modal title="Edit Contact" subtitle={contact.name} onClose={onClose} width={480}>
       <div className="flex flex-col gap-4">
-        <Field label="Name" required>
-          <input className={reqCls(!!name.trim())} value={name} onChange={(e) => setName(e.target.value)} />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="First Name" required>
+            <input className={reqCls(!!firstName.trim())} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          </Field>
+          <Field label="Last Name" required>
+            <input className={reqCls(!!lastName.trim())} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          </Field>
+        </div>
         <Field label="Account (optional)">
           <AccountPicker accounts={accounts} value={account} onChange={setAccount} />
         </Field>
@@ -876,13 +1069,22 @@ export function EditContactModal({
         <Field label="Phone (optional)">
           <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
+        <Field label="LinkedIn Profile (optional)">
+          <input
+            className={inputCls}
+            type="url"
+            placeholder="https://www.linkedin.com/in/name"
+            value={linkedinUrl}
+            onChange={(e) => setLinkedinUrl(e.target.value)}
+          />
+        </Field>
         <Field label="Notes (optional)">
           <textarea className={`${inputCls} min-h-20 resize-y`} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
         {error && <p className="text-sm text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <PrimaryButton onClick={submit} disabled={!name.trim() || busy}>
+          <PrimaryButton onClick={submit} disabled={!firstName.trim() || !lastName.trim() || busy}>
             {busy ? "Saving…" : "Save"}
           </PrimaryButton>
         </div>

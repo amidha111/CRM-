@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { OPEN_STAGES, STAGE_LABELS, type Account, type Actor, type Contact, type Opportunity, type Stage } from "../types";
 import { completeNextAction } from "../lib/store";
-import { formatMoney, relativeTime } from "../lib/format";
+import { formatDate, formatMoney, relativeTime } from "../lib/format";
 import { Avatar, DueBadge, EmptyCard, NbaChip, PrimaryButton, StagePill, inputCls } from "../components/ui";
 import { NewOpportunityModal } from "../components/modals";
 import type { OpenRecord } from "../components/record";
+import { PageHeader } from "../components/pageChrome";
+import { PIcon } from "../components/icons";
 
 export function OpportunitiesPage({
   opps,
@@ -45,45 +47,95 @@ export function OpportunitiesPage({
     [opps],
   );
 
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-line bg-canvas/90 px-8 py-4 backdrop-blur">
-        <h1 className="text-2xl font-bold text-ink">Opportunities</h1>
-        <input
-          className={`${inputCls} ml-auto max-w-64`}
-          placeholder="Search deals…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className={`${inputCls} w-44`}
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value as Stage | "all" | "open")}
-        >
-          <option value="open">Open deals</option>
-          <option value="all">All stages</option>
-          {Object.entries(STAGE_LABELS).map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <PrimaryButton onClick={() => setShowNew(true)}>+ New Opportunity</PrimaryButton>
-      </header>
+  const totals = useMemo(() => {
+    const open = filtered.filter((o) => OPEN_STAGES.includes(o.stage));
+    return {
+      total: filtered.reduce((s, o) => s + o.amount, 0),
+      open: open.reduce((s, o) => s + o.amount, 0),
+    };
+  }, [filtered]);
 
-      <div className="p-8">
+  return (
+    <div className="page-frame">
+      <PageHeader
+        icon="target"
+        kind="Opportunities"
+        title={stageFilter === "all" ? "All Pipeline" : "Open Pipeline"}
+        meta={`${filtered.length} items · sorted by Close Date · updated now`}
+        actions={
+          <>
+            <button className="icon-button" title="Refresh" type="button">
+              <PIcon name="refresh" size={15} />
+            </button>
+            <span className="segmented" aria-label="View mode">
+              <span className="on">
+                <PIcon name="list" size={15} />
+              </span>
+              <span>
+                <PIcon name="board" size={15} />
+              </span>
+            </span>
+            <button className="toolbar-button hidden sm:inline-flex" type="button">
+              <PIcon name="mail" size={15} />
+              Import
+            </button>
+            <PrimaryButton onClick={() => setShowNew(true)}>
+              <PIcon name="plus" size={15} sw={2.2} />
+              New Opportunity
+            </PrimaryButton>
+          </>
+        }
+      />
+
+      <div>
         {opps.length === 0 ? (
           <EmptyCard
-            icon="★"
+            icon="target"
             title="No opportunities yet"
             line="Your pipeline starts with one deal."
             action={<PrimaryButton onClick={() => setShowNew(true)}>+ New Opportunity</PrimaryButton>}
           />
         ) : (
           <>
+            <div className="mb-4 flex flex-wrap items-center gap-2.5">
+              <span className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm text-faint sm:w-[250px]">
+                <PIcon name="search" size={14} />
+                <input
+                  className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-faint"
+                  placeholder="Search this list..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </span>
+              <select
+                className={`${inputCls} h-8 w-full py-1 sm:w-44`}
+                value={stageFilter}
+                onChange={(e) => setStageFilter(e.target.value as Stage | "all" | "open")}
+              >
+                <option value="open">Open deals</option>
+                <option value="all">All stages</option>
+                {Object.entries(STAGE_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <span className="filter-chip">
+                <span className="text-gold-deep">Stage</span>
+                <b>{stageFilter === "open" ? "Open" : stageFilter === "all" ? "All" : STAGE_LABELS[stageFilter]}</b>
+                <PIcon name="x" size={11} sw={2.2} className="text-gold-deep" />
+              </span>
+              <span className="hidden items-center gap-1.5 px-1.5 text-xs font-semibold text-muted sm:inline-flex">
+                <PIcon name="filter" size={13} />
+                Add filter
+              </span>
+              <span className="ml-auto font-mono text-[11px] text-faint">
+                {formatMoney(totals.total)} TOTAL · {formatMoney(totals.open)} OPEN
+              </span>
+            </div>
             {focus.length > 0 && (
               <div className="card mb-6 flex flex-wrap items-center gap-3 border-l-4 border-l-gold p-4">
-                <span className="text-xs font-bold uppercase tracking-wide text-muted">⚡ Next Best Actions</span>
+                <span className="font-mono text-[11px] font-bold uppercase tracking-wide text-muted">★ Next Best Actions</span>
                 {focus.map((o) => (
                   <NbaChip
                     key={o.id}
@@ -98,16 +150,18 @@ export function OpportunitiesPage({
             )}
 
             <div className="card overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[980px] text-sm">
                 <thead>
-                  <tr className="border-b border-line text-left text-xs font-semibold uppercase tracking-wide text-muted">
+                  <tr className="border-b border-line bg-tone/70 text-left font-mono text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    <th className="w-[38px] px-5 py-3.5"><span className="block h-4 w-4 rounded border border-[#cfcaba]" /></th>
                     <th className="px-5 py-3.5">Opportunity</th>
                     <th className="px-3 py-3.5">Account</th>
-                    <th className="px-3 py-3.5">Owner</th>
                     <th className="px-3 py-3.5 text-right">Amount</th>
                     <th className="px-3 py-3.5">Stage</th>
-                    <th className="px-3 py-3.5">Next Best Action</th>
-                    <th className="px-5 py-3.5 text-right">Updated</th>
+                    <th className="px-3 py-3.5">Close Date</th>
+                    <th className="px-3 py-3.5">Next Step</th>
+                    <th className="px-3 py-3.5">Owner</th>
+                    <th className="px-5 py-3.5 text-right"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -115,50 +169,84 @@ export function OpportunitiesPage({
                     <tr
                       key={o.id}
                       onClick={() => onOpenRecord("opportunity", o.id)}
-                      className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-gold-soft/30"
+                      className="cursor-pointer border-b border-line-soft last:border-0 hover:bg-gold-soft/35"
                     >
+                      <td className="px-5 py-4">
+                        <span className="block h-4 w-4 rounded border border-[#cfcaba] bg-paper" />
+                      </td>
                       <td className="px-5 py-4">
                         <span className="font-semibold text-gold-deep hover:underline">{o.name}</span>
                       </td>
-                      <td className="px-3 py-4 text-muted">{o.account || "—"}</td>
+                      <td className="px-3 py-4 text-muted">
+                        <span className="inline-flex items-center gap-2">
+                          <PIcon name="briefcase" size={13} className="text-faint" />
+                          {o.account || "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-4 text-right font-bold text-ink">{formatMoney(o.amount)}</td>
+                      <td className="px-3 py-4">
+                          <StagePill stage={o.stage} />
+                        </td>
+                      <td className="px-3 py-4 text-muted">
+                        {o.closeDate ? (
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                            <PIcon name="calendar" size={13} className="text-faint" />
+                            {formatDate(o.closeDate)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-4">
+                        {o.nextAction ? (
+                          <span className="flex flex-col gap-1">
+                            <NbaChip
+                              compact
+                              text={o.nextAction.text}
+                              onDone={() => completeNextAction(o, null, actor)}
+                            />
+                            <span>
+                              <DueBadge due={o.nextAction.dueDate} />
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
                       <td className="px-3 py-4">
                         <span className="flex items-center gap-2 text-ink">
                           <Avatar name={o.owner} size={24} />
                           {o.owner}
                         </span>
                       </td>
-                      <td className="px-3 py-4 text-right font-bold text-ink">{formatMoney(o.amount)}</td>
-                      <td className="px-3 py-4">
-                        <StagePill stage={o.stage} />
+                      <td className="px-5 py-4 text-right text-faint">
+                        <span className="sr-only">{relativeTime(o.updatedAt)}</span>
+                        <PIcon name="more" size={16} />
                       </td>
-                      <td className="px-3 py-4">
-                        {o.nextAction ? (
-                          <>
-                            <NbaChip
-                              compact
-                              text={o.nextAction.text}
-                              onDone={() => completeNextAction(o, null, actor)}
-                            />
-                            <div className="mt-1">
-                              <DueBadge due={o.nextAction.dueDate} />
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-right text-xs text-muted">{relativeTime(o.updatedAt)}</td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-10 text-center text-muted">
+                      <td colSpan={9} className="px-5 py-10 text-center text-muted">
                         No deals match this filter.
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
+              <div className="table-footer">
+                <span>1-{filtered.length} OF {filtered.length}</span>
+                <span>·</span>
+                <span>50 PER PAGE</span>
+                <span className="ml-auto flex items-center gap-1">
+                  <span className="flex h-[26px] w-[26px] rotate-180 items-center justify-center rounded-md border border-line bg-paper text-muted">
+                    <PIcon name="chevronRight" size={13} />
+                  </span>
+                  <span className="flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line bg-paper text-muted">
+                    <PIcon name="chevronRight" size={13} />
+                  </span>
+                </span>
+              </div>
             </div>
           </>
         )}

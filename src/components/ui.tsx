@@ -1,16 +1,28 @@
 import type { ReactNode } from "react";
 import { STAGE_LABELS, type Stage } from "../types";
 import { dueLabel, dueStatus, initials } from "../lib/format";
+import { PIcon, type IconName } from "./icons";
 
 export function StagePill({ stage }: { stage: Stage }) {
   const tone =
     stage === "closed_won"
-      ? "bg-success-soft text-success"
+      ? "border-success/30 bg-success-soft text-success"
       : stage === "closed_lost"
-        ? "bg-danger-soft text-danger"
-        : "bg-slate-100 text-slate-600";
+        ? "border-danger/20 bg-danger-soft text-danger"
+        : stage === "proposal" || stage === "negotiation"
+          ? "border-gold/45 bg-gold-soft text-gold-deep"
+          : "border-line bg-tone text-muted";
+  const dot =
+    stage === "closed_won"
+      ? "bg-success"
+      : stage === "closed_lost"
+        ? "bg-danger"
+        : stage === "proposal" || stage === "negotiation"
+          ? "bg-gold"
+          : "bg-[#b9b4a3]";
   return (
-    <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${tone}`}>
+    <span className={`inline-flex h-[26px] items-center gap-2 rounded-full border px-2.5 text-xs font-semibold whitespace-nowrap ${tone}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       {STAGE_LABELS[stage]}
     </span>
   );
@@ -19,7 +31,11 @@ export function StagePill({ stage }: { stage: Stage }) {
 export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   return (
     <span
-      className="inline-flex items-center justify-center rounded-full bg-navy text-white font-semibold shrink-0"
+      className={`inline-flex items-center justify-center rounded-full font-semibold shrink-0 ${
+        size <= 27
+          ? "bg-navy-soft text-white"
+          : "bg-[linear-gradient(160deg,#f6d684,#d9a93d)] text-navy"
+      }`}
       style={{ width: size, height: size, fontSize: size * 0.38 }}
     >
       {initials(name)}
@@ -31,12 +47,13 @@ export function DueBadge({ due }: { due: Date }) {
   const status = dueStatus(due);
   const tone =
     status === "overdue"
-      ? "text-danger bg-danger-soft"
+      ? "border-danger/20 text-danger bg-danger-soft"
       : status === "today"
-        ? "text-gold-deep bg-gold-soft"
-        : "text-muted bg-slate-100";
+        ? "border-gold/40 text-gold-deep bg-gold-soft"
+        : "border-line text-muted bg-tone";
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap ${tone}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.03em] whitespace-nowrap ${tone}`}>
+      <PIcon name={status === "overdue" ? "flag" : "clock"} size={10} sw={2.2} />
       {dueLabel(due)}
     </span>
   );
@@ -59,10 +76,10 @@ export function NbaChip({
     <span
       onClick={onClick}
       role={onClick ? "button" : undefined}
-      className={`inline-flex items-center gap-2 rounded-lg border border-gold bg-gold-soft text-ink ${compact ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm"} ${onClick ? "cursor-pointer hover:bg-gold-soft/80" : ""}`}
+      className={`inline-flex max-w-full items-center gap-2 rounded-md border border-gold/45 bg-gold-soft text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.5)] ${compact ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm"} ${onClick ? "cursor-pointer hover:border-gold hover:bg-[#f6e7bd]" : ""}`}
     >
       <span aria-hidden className="text-gold-deep">★</span>
-      <span className="font-medium">{text}</span>
+      <span className="min-w-0 truncate font-medium">{text}</span>
       {due && <DueBadge due={due} />}
       {onDone && (
         <button
@@ -71,7 +88,7 @@ export function NbaChip({
             onDone();
           }}
           title="Mark done"
-          className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-gold-deep/40 text-gold-deep hover:bg-gold hover:text-navy transition-colors"
+          className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-md border border-gold-deep/40 text-gold-deep hover:bg-gold hover:text-navy transition-colors"
         >
           ✓
         </button>
@@ -132,7 +149,7 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+      <span className="mb-1 block font-mono text-[11px] font-semibold uppercase tracking-wide text-muted">
         {label}
         {required && <span className="ml-0.5 text-danger">*</span>}
       </span>
@@ -142,7 +159,7 @@ export function Field({
 }
 
 export const inputCls =
-  "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:ring-2 focus:ring-gold/50 focus:border-gold";
+  "w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink outline-none placeholder:text-faint focus:border-gold focus:ring-2 focus:ring-gold/25";
 
 export function PrimaryButton({
   children,
@@ -160,7 +177,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="rounded-lg bg-gold px-4 py-2 text-sm font-semibold text-navy shadow-sm hover:brightness-105 disabled:opacity-50 transition"
+      className="primary-gradient disabled:opacity-50 transition"
     >
       {children}
     </button>
@@ -172,7 +189,7 @@ export function GhostButton({ children, onClick }: { children: ReactNode; onClic
     <button
       type="button"
       onClick={onClick}
-      className="rounded-lg px-4 py-2 text-sm font-semibold text-muted hover:text-ink hover:bg-slate-100 transition"
+      className="inline-flex items-center justify-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-muted hover:text-ink hover:bg-tone transition"
     >
       {children}
     </button>
@@ -185,15 +202,15 @@ export function EmptyCard({
   line,
   action,
 }: {
-  icon: string;
+  icon: IconName;
   title: string;
   line: string;
   action?: ReactNode;
 }) {
   return (
     <div className="card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-soft text-2xl text-gold-deep">
-        {icon}
+      <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-gold-soft text-gold-deep">
+        <PIcon name={icon} size={27} sw={1.9} />
       </span>
       <h2 className="text-2xl font-bold text-ink">{title}</h2>
       <p className="text-sm text-muted">{line}</p>

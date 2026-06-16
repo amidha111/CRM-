@@ -2,18 +2,19 @@ import { useMemo, useState } from "react";
 import { ACTIVITY_TYPE_LABELS, type Activity, type ActivityType, type Opportunity } from "../types";
 import { dayHeading } from "../lib/format";
 import { EmptyCard, StagePill, inputCls } from "../components/ui";
+import { PageHeader } from "../components/pageChrome";
 
 const TYPE_ICONS: Record<string, { icon: string; cls: string }> = {
   created: { icon: "✦", cls: "bg-gold-soft text-gold-deep" },
   action_completed: { icon: "✓", cls: "bg-success-soft text-success" },
   action_set: { icon: "★", cls: "bg-gold-soft text-gold-deep" },
-  stage_change: { icon: "⇄", cls: "bg-slate-100 text-slate-600" },
-  stakeholder_added: { icon: "+", cls: "bg-slate-100 text-slate-600" },
-  stakeholder_removed: { icon: "−", cls: "bg-slate-100 text-slate-600" },
+  stage_change: { icon: "⇄", cls: "bg-tone text-muted" },
+  stakeholder_added: { icon: "+", cls: "bg-tone text-muted" },
+  stakeholder_removed: { icon: "−", cls: "bg-tone text-muted" },
   call: { icon: "✆", cls: "bg-gold-soft text-gold-deep" },
   email: { icon: "✉", cls: "bg-gold-soft text-gold-deep" },
   meeting: { icon: "▣", cls: "bg-gold-soft text-gold-deep" },
-  note: { icon: "✎", cls: "bg-slate-100 text-slate-600" },
+  note: { icon: "✎", cls: "bg-tone text-muted" },
 };
 
 export function ActivityLogPage({
@@ -48,11 +49,11 @@ export function ActivityLogPage({
   }, [filtered, shown]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-line bg-canvas/90 px-8 py-4 backdrop-blur">
-        <h1 className="text-2xl font-bold text-ink">Activity Log</h1>
+    <div className="page-frame">
+      <PageHeader icon="activity" kind="Activity" title="Activity Log" meta={`${filtered.length} events`} />
+      <div className="flex flex-wrap items-center gap-2.5">
         <select
-          className={`${inputCls} ml-auto w-48`}
+          className={`${inputCls} h-8 w-full py-1 sm:w-48`}
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as ActivityType | "all")}
         >
@@ -63,7 +64,7 @@ export function ActivityLogPage({
             </option>
           ))}
         </select>
-        <select className={`${inputCls} w-56`} value={oppFilter} onChange={(e) => setOppFilter(e.target.value)}>
+        <select className={`${inputCls} h-8 w-full py-1 sm:w-56`} value={oppFilter} onChange={(e) => setOppFilter(e.target.value)}>
           <option value="all">All opportunities</option>
           {opps.map((o) => (
             <option key={o.id} value={o.id}>
@@ -71,12 +72,13 @@ export function ActivityLogPage({
             </option>
           ))}
         </select>
-      </header>
+        <span className="ml-auto font-mono text-[11px] text-faint">{filtered.length} EVENTS</span>
+      </div>
 
-      <div className="mx-auto max-w-3xl p-8">
+      <div className="mx-auto w-full max-w-3xl">
         {filtered.length === 0 ? (
           <EmptyCard
-            icon="↺"
+            icon="activity"
             title="Nothing logged yet"
             line="Activity appears here automatically as you work your deals."
           />
@@ -84,13 +86,13 @@ export function ActivityLogPage({
           <>
             {groups.map(([day, items]) => (
               <section key={day} className="mb-6">
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-widest text-muted">{day}</h2>
+                <h2 className="mb-2 font-mono text-[11px] font-bold uppercase tracking-wide text-muted">{day}</h2>
                 <div className="flex flex-col gap-2">
                   {items.map((a) => {
-                    const t = TYPE_ICONS[a.type] ?? { icon: "•", cls: "bg-slate-100 text-slate-600" };
+                    const t = TYPE_ICONS[a.type] ?? { icon: "•", cls: "bg-tone text-muted" };
                     return (
                       <div key={a.id} className="card flex items-start gap-3 p-4">
-                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm ${t.cls}`}>
+                        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm ${t.cls}`}>
                           {t.icon}
                         </span>
                         <div className="min-w-0 flex-1">
@@ -123,7 +125,7 @@ export function ActivityLogPage({
             {filtered.length > shown && (
               <button
                 onClick={() => setShown((s) => s + 50)}
-                className="mx-auto block rounded-full border border-line bg-white px-5 py-2 text-sm font-semibold text-muted hover:text-ink"
+                className="mx-auto block rounded-md border border-line bg-paper px-5 py-2 text-sm font-semibold text-muted hover:bg-tone hover:text-ink"
               >
                 Load older activity
               </button>

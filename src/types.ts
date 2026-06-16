@@ -135,12 +135,15 @@ export interface Activity {
 
 export interface Contact {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
   accountId: string | null;
   accountName: string; // denormalized account name ("" when unaffiliated)
   title: string | null;
   email: string | null;
   phone: string | null;
+  linkedinUrl: string | null;
   notes: string;
   createdAt: Date;
   updatedAt: Date;
@@ -149,6 +152,14 @@ export interface Contact {
 export interface Actor {
   name: string;
   uid: string;
+}
+
+export interface AllowedUser {
+  id: string;
+  email: string;
+  addedBy: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /** Input shapes for write operations */
@@ -177,11 +188,14 @@ export interface NewAccountInput {
 }
 
 export interface NewContactInput {
+  firstName: string;
+  lastName: string;
   name: string;
   account: AccountRefInput | null;
   title?: string;
   email?: string;
   phone?: string;
+  linkedinUrl?: string;
 }
 
 export interface UpdateOpportunityInput {
@@ -203,11 +217,14 @@ export interface UpdateAccountInput {
 }
 
 export interface UpdateContactInput {
+  firstName: string;
+  lastName: string;
   name: string;
   account: AccountRefInput | null;
   title: string | null;
   email: string | null;
   phone: string | null;
+  linkedinUrl: string | null;
   notes: string;
 }
 

@@ -29,7 +29,7 @@ const RECORD_HOME: Record<RecordRef["type"], Page> = {
 };
 
 function Workspace({ user }: { user: { name: string; email: string; uid: string } }) {
-  const [page, setPage] = useState<Page>("opportunities");
+  const [page, setPage] = useState<Page>("dashboard");
   const [record, setRecord] = useState<RecordRef | null>(null);
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
@@ -118,7 +118,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
   const recordView = record ? renderRecord(record) : null;
 
   return (
-    <div className="dot-grid flex h-screen overflow-hidden">
+    <div className="dot-grid flex h-screen flex-col overflow-hidden">
       <Sidebar page={page} onNavigate={navigate} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} />
       {recordView ?? (
         <>
@@ -144,7 +144,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
           {page === "dashboard" && (
             <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
           )}
-          {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} />}
+          {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} userUid={user.uid} />}
         </>
       )}
     </div>

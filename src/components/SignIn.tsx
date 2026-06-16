@@ -21,14 +21,14 @@ export function SignIn({ denied }: { denied: boolean }) {
   return (
     <div className="dot-grid flex min-h-screen items-center justify-center p-4">
       <div className="card w-full max-w-[420px] p-8 text-center">
-        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gold text-2xl font-extrabold text-navy">
+        <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-gold-bright text-2xl font-extrabold text-navy shadow-[inset_0_1px_0_rgb(255_255_255/0.45)]">
           D
         </span>
         <h1 className="text-3xl font-bold text-ink">Darma Foundry</h1>
         <p className="mt-1 text-sm text-muted">Your pipeline, one next action at a time.</p>
 
         {denied && (
-          <div className="mt-5 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
+          <div className="mt-5 rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">
             This Google account doesn't have access to this workspace.{" "}
             <button className="font-semibold underline" onClick={() => signOut(auth)}>
               Try a different account
@@ -36,14 +36,14 @@ export function SignIn({ denied }: { denied: boolean }) {
           </div>
         )}
         {error && (
-          <div className="mt-5 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
+          <div className="mt-5 rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
         )}
 
         {!denied && (
           <button
             onClick={handleSignIn}
             disabled={busy}
-            className="mt-6 flex w-full items-center justify-center gap-3 rounded-lg border border-line bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:bg-slate-50 disabled:opacity-50 transition"
+            className="mt-6 flex w-full items-center justify-center gap-3 rounded-md border border-line bg-paper px-4 py-2.5 text-sm font-semibold text-ink hover:bg-tone disabled:opacity-50 transition"
           >
             <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
               <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>

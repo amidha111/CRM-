@@ -28,6 +28,16 @@ const id = (p: string) => `${p}_${seq++}`;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000);
 
+function splitContactName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] ?? "", lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] ?? "" };
+}
+
+function contactDisplayName(firstName: string, lastName: string): string {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+}
+
 const accounts: Account[] = [
   { id: "a_acme", name: "Acme Corp", industry: "Manufacturing", website: "acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
   { id: "a_globex", name: "Globex Ltd", industry: "Technology", website: "globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
@@ -37,11 +47,11 @@ const accounts: Account[] = [
 ];
 
 const contacts: Contact[] = [
-  { id: "c_priya", name: "Priya Shah", accountId: "a_acme", accountName: "Acme Corp", title: "CFO", email: "priya@acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
-  { id: "c_jane", name: "Jane Doe", accountId: "a_acme", accountName: "Acme Corp", title: "VP Engineering", email: "jane@acme.com", phone: null, notes: "", createdAt: daysAgo(38), updatedAt: daysAgo(5) },
-  { id: "c_tom", name: "Tom Berenger", accountId: "a_globex", accountName: "Globex Ltd", title: "CTO", email: "tom@globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
-  { id: "c_amara", name: "Amara Okafor", accountId: "a_initech", accountName: "Initech", title: "Board member", email: null, phone: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
-  { id: "c_dev", name: "Dev Patel", accountId: "a_hooli", accountName: "Hooli", title: "Head of Data", email: "dev@hooli.com", phone: null, notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
+  { id: "c_priya", firstName: "Priya", lastName: "Shah", name: "Priya Shah", accountId: "a_acme", accountName: "Acme Corp", title: "CFO", email: "priya@acme.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/priyashah", notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
+  { id: "c_jane", firstName: "Jane", lastName: "Doe", name: "Jane Doe", accountId: "a_acme", accountName: "Acme Corp", title: "VP Engineering", email: "jane@acme.com", phone: null, linkedinUrl: null, notes: "", createdAt: daysAgo(38), updatedAt: daysAgo(5) },
+  { id: "c_tom", firstName: "Tom", lastName: "Berenger", name: "Tom Berenger", accountId: "a_globex", accountName: "Globex Ltd", title: "CTO", email: "tom@globex.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/tomberenger", notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
+  { id: "c_amara", firstName: "Amara", lastName: "Okafor", name: "Amara Okafor", accountId: "a_initech", accountName: "Initech", title: "Board member", email: null, phone: null, linkedinUrl: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
+  { id: "c_dev", firstName: "Dev", lastName: "Patel", name: "Dev Patel", accountId: "a_hooli", accountName: "Hooli", title: "Head of Data", email: "dev@hooli.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/devpatel", notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
 ];
 
 const opportunities: Opportunity[] = [
@@ -202,14 +212,18 @@ function resolveAccount(input: AccountRefInput): { accountId: string; accountNam
 function resolveContact(input: StakeholderInput, account: { accountId: string | null; accountName: string }): string {
   if (input.contactId) return input.contactId;
   const cid = id("c");
+  const split = splitContactName(input.name);
   contacts.push({
     id: cid,
+    firstName: split.firstName,
+    lastName: split.lastName,
     name: input.name,
     accountId: account.accountId,
     accountName: account.accountName,
     title: ("title" in input && input.title) || null,
     email: ("email" in input && input.email) || null,
     phone: null,
+    linkedinUrl: null,
     notes: "",
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -350,9 +364,10 @@ export async function createAccount(input: NewAccountInput): Promise<string> {
 export async function createContact(input: NewContactInput): Promise<string> {
   const account = input.account ? resolveAccount(input.account) : null;
   const cid = id("c");
+  const name = input.name || contactDisplayName(input.firstName, input.lastName);
   contacts.push({
-    id: cid, name: input.name, accountId: account?.accountId ?? null, accountName: account?.accountName ?? "",
-    title: input.title || null, email: input.email || null, phone: input.phone || null, notes: "",
+    id: cid, firstName: input.firstName, lastName: input.lastName, name, accountId: account?.accountId ?? null, accountName: account?.accountName ?? "",
+    title: input.title || null, email: input.email || null, phone: input.phone || null, linkedinUrl: input.linkedinUrl || null, notes: "",
     createdAt: new Date(), updatedAt: new Date(),
   });
   emit();
@@ -395,16 +410,19 @@ export async function updateContact(contact: Contact, input: UpdateContactInput)
   const c = contacts.find((x) => x.id === contact.id);
   if (!c) throw new Error("contact not found");
   const account = input.account ? resolveAccount(input.account) : null;
-  if (input.name !== c.name) {
+  const name = input.name || contactDisplayName(input.firstName, input.lastName);
+  if (name !== c.name) {
     opportunities.forEach((o) => {
-      o.contactRoles = o.contactRoles.map((r) => (r.contactId === c.id ? { ...r, name: input.name } : r));
+      o.contactRoles = o.contactRoles.map((r) => (r.contactId === c.id ? { ...r, name } : r));
     });
   }
   Object.assign(c, {
-    name: input.name,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    name,
     accountId: account?.accountId ?? null,
     accountName: account?.accountName ?? "",
-    title: input.title, email: input.email, phone: input.phone, notes: input.notes,
+    title: input.title, email: input.email, phone: input.phone, linkedinUrl: input.linkedinUrl, notes: input.notes,
     updatedAt: new Date(),
   });
   emit();

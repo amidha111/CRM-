@@ -53,8 +53,8 @@ export function AccountRecordPage({
   }, [opps, contacts, account.id]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 p-8">
+    <div className="page-frame">
+      <div className="flex flex-col gap-4">
         <Breadcrumb list="Accounts" onBack={onBack} current={account.name} />
 
         <RecordHeader
@@ -65,7 +65,7 @@ export function AccountRecordPage({
             <>
               <button
                 onClick={handleDelete}
-                className="rounded-lg px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
+                className="rounded-md px-3 py-2 text-sm font-semibold text-danger hover:bg-danger-soft transition"
               >
                 Delete
               </button>
@@ -98,7 +98,7 @@ export function AccountRecordPage({
         />
 
         {deleteError && (
-          <div className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">{deleteError}</div>
+          <div className="rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">{deleteError}</div>
         )}
 
         <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
@@ -115,7 +115,7 @@ export function AccountRecordPage({
               {related.deals.map((o) => (
                 <div
                   key={o.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2.5"
+                  className="flex items-center justify-between gap-2 rounded-md border border-line bg-paper px-3 py-2.5 hover:bg-tone/70"
                 >
                   <span className="min-w-0">
                     <RecordLink onClick={() => onOpenRecord("opportunity", o.id)}>{o.name}</RecordLink>

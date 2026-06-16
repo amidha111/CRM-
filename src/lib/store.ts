@@ -1,11 +1,13 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
   orderBy,
   query,
   limit,
+  setDoc,
   where,
   writeBatch,
   serverTimestamp,
@@ -18,6 +20,7 @@ import {
   STAGE_LABELS,
   type Account,
   type AccountRefInput,
+  type AllowedUser,
   type Activity,
   type ActivityType,
   type Actor,
@@ -45,6 +48,16 @@ function toDate(v: unknown): Date {
     return (v as { toDate: () => Date }).toDate();
   }
   return new Date();
+}
+
+function splitContactName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] ?? "", lastName: "" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts[parts.length - 1] ?? "" };
+}
+
+function contactDisplayName(firstName: string, lastName: string): string {
+  return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
 }
 
 function snapToOpp(snap: DocumentSnapshot): Opportunity {
@@ -95,14 +108,20 @@ function snapToActivity(snap: DocumentSnapshot): Activity {
 
 function snapToContact(snap: DocumentSnapshot): Contact {
   const d = snap.data({ serverTimestamps: "estimate" })!;
+  const fallback = splitContactName(d.name ?? "");
+  const firstName = d.firstName ?? fallback.firstName;
+  const lastName = d.lastName ?? fallback.lastName;
   return {
     id: snap.id,
-    name: d.name,
+    firstName,
+    lastName,
+    name: d.name ?? contactDisplayName(firstName, lastName),
     accountId: d.accountId ?? null,
     accountName: d.accountName ?? d.company ?? "", // `company` was the pre-accounts field
     title: d.title ?? null,
     email: d.email ?? null,
     phone: d.phone ?? null,
+    linkedinUrl: d.linkedinUrl ?? null,
     notes: d.notes ?? "",
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
@@ -121,6 +140,25 @@ function snapToAccount(snap: DocumentSnapshot): Account {
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
   };
+}
+
+function snapToAllowedUser(snap: DocumentSnapshot): AllowedUser {
+  const d = snap.data({ serverTimestamps: "estimate" })!;
+  return {
+    id: snap.id,
+    email: d.email ?? snap.id,
+    addedBy: d.addedBy ?? "",
+    createdAt: toDate(d.createdAt),
+    updatedAt: toDate(d.updatedAt),
+  };
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function isWorkspaceAdmin(email: string): boolean {
+  return normalizeEmail(email) === "amidha111@gmail.com";
 }
 
 // ---------- subscriptions ----------
@@ -173,6 +211,30 @@ export function subscribeAccounts(
   return onSnapshot(
     q,
     (qs: QuerySnapshot) => cb(qs.docs.map(snapToAccount)),
+    onError,
+  );
+}
+
+export function subscribeAllowedUsers(
+  cb: (users: AllowedUser[]) => void,
+  onError: (e: Error) => void,
+): Unsub {
+  if (DEMO) {
+    cb([
+      {
+        id: "demo@example.com",
+        email: "demo@example.com",
+        addedBy: "demo",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    return () => {};
+  }
+  const q = query(collection(db, "allowedUsers"), orderBy("email"));
+  return onSnapshot(
+    q,
+    (qs: QuerySnapshot) => cb(qs.docs.map(snapToAllowedUser)),
     onError,
   );
 }
@@ -237,13 +299,17 @@ function resolveContact(
 ): string {
   if (input.contactId) return input.contactId;
   const ref = doc(collection(db, "contacts"));
+  const split = splitContactName(input.name);
   batch.set(ref, {
+    firstName: split.firstName,
+    lastName: split.lastName,
     name: input.name,
     accountId: account.accountId,
     accountName: account.accountName,
     title: ("title" in input && input.title) || null,
     email: ("email" in input && input.email) || null,
     phone: null,
+    linkedinUrl: null,
     notes: "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -443,13 +509,17 @@ export async function createContact(input: NewContactInput): Promise<string> {
   const batch = writeBatch(db);
   const account = input.account ? resolveAccount(batch, input.account) : null;
   const ref = doc(collection(db, "contacts"));
+  const name = input.name || contactDisplayName(input.firstName, input.lastName);
   batch.set(ref, {
-    name: input.name,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    name,
     accountId: account?.accountId ?? null,
     accountName: account?.accountName ?? "",
     title: input.title || null,
     email: input.email || null,
     phone: input.phone || null,
+    linkedinUrl: input.linkedinUrl || null,
     notes: "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -523,17 +593,21 @@ export async function updateContact(contact: Contact, input: UpdateContactInput)
   if (DEMO) return demo.updateContact(contact, input);
   const batch = writeBatch(db);
   const account = input.account ? resolveAccount(batch, input.account) : null;
+  const name = input.name || contactDisplayName(input.firstName, input.lastName);
   batch.update(doc(db, "contacts", contact.id), {
-    name: input.name,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    name,
     accountId: account?.accountId ?? null,
     accountName: account?.accountName ?? "",
     title: input.title,
     email: input.email,
     phone: input.phone,
+    linkedinUrl: input.linkedinUrl,
     notes: input.notes,
     updatedAt: serverTimestamp(),
   });
-  if (input.name !== contact.name) {
+  if (name !== contact.name) {
     // fan out the denormalized name into contactRoles on linked deals
     const oppSnap = await getDocs(
       query(collection(db, "opportunities"), where("contactIds", "array-contains", contact.id)),
@@ -541,7 +615,7 @@ export async function updateContact(contact: Contact, input: UpdateContactInput)
     oppSnap.docs.forEach((d) => {
       const roles = (d.data().contactRoles ?? []) as ContactRole[];
       batch.update(d.ref, {
-        contactRoles: roles.map((r) => (r.contactId === contact.id ? { ...r, name: input.name } : r)),
+        contactRoles: roles.map((r) => (r.contactId === contact.id ? { ...r, name } : r)),
       });
     });
   }
@@ -608,4 +682,31 @@ export async function removeStakeholder(opp: Opportunity, contactId: string, act
     activityDoc(opp, actor, "stakeholder_removed", `Removed ${role.name}`, { contactId }),
   );
   await batch.commit();
+}
+
+export async function addAllowedUser(email: string, actor: Actor): Promise<void> {
+  if (DEMO) return;
+  const normalized = normalizeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error("Enter a valid email address.");
+  }
+  if (isWorkspaceAdmin(normalized)) {
+    throw new Error("The owner already has permanent access.");
+  }
+  await setDoc(doc(db, "allowedUsers", normalized), {
+    email: normalized,
+    addedBy: actor.uid,
+    addedByName: actor.name,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function removeAllowedUser(email: string): Promise<void> {
+  if (DEMO) return;
+  const normalized = normalizeEmail(email);
+  if (isWorkspaceAdmin(normalized)) {
+    throw new Error("The owner cannot be removed.");
+  }
+  await deleteDoc(doc(db, "allowedUsers", normalized));
 }

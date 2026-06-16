@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
-import type { Account, Activity, Contact, Opportunity } from "../types";
-import { subscribeAccounts, subscribeActivities, subscribeContacts, subscribeOpportunities } from "./store";
+import type { Account, AllowedUser, Activity, Contact, Opportunity } from "../types";
+import {
+  subscribeAccounts,
+  subscribeActivities,
+  subscribeAllowedUsers,
+  subscribeContacts,
+  subscribeOpportunities,
+} from "./store";
 
 export function useOpportunities() {
   const [opps, setOpps] = useState<Opportunity[] | null>(null);
@@ -28,4 +34,14 @@ export function useAccounts() {
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => subscribeAccounts(setAccounts, setError), []);
   return { accounts, error };
+}
+
+export function useAllowedUsers(enabled: boolean) {
+  const [allowedUsers, setAllowedUsers] = useState<AllowedUser[]>([]);
+  const [error, setError] = useState<Error | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    return subscribeAllowedUsers(setAllowedUsers, setError);
+  }, [enabled]);
+  return { allowedUsers, error };
 }
