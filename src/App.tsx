@@ -160,7 +160,7 @@ export default function App() {
   }, []);
 
   if (DEMO) {
-    return <Workspace user={{ name: "Amit", email: "demo@founderflow.local", uid: "demo" }} />;
+    return <Workspace user={{ name: "Amit", email: "demo@planclarity.local", uid: "demo" }} />;
   }
 
   if (user === "loading") {

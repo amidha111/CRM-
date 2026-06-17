@@ -13,12 +13,12 @@ async function assertAllowed(request) {
   const token = request.auth?.token;
   const email = typeof token?.email === "string" ? token.email.toLowerCase() : "";
   if (!email || !token?.email_verified) {
-    throw new HttpsError("permission-denied", "This account does not have access to Darma Foundry.");
+    throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
   }
   if (email === ADMIN_EMAIL) return;
   const allowed = await db.doc(`allowedUsers/${email}`).get();
   if (!allowed.exists) {
-    throw new HttpsError("permission-denied", "This account does not have access to Darma Foundry.");
+    throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
   }
 }
 

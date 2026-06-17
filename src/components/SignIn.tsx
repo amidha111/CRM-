@@ -22,9 +22,9 @@ export function SignIn({ denied }: { denied: boolean }) {
     <div className="dot-grid flex min-h-screen items-center justify-center p-4">
       <div className="card w-full max-w-[420px] p-8 text-center">
         <span className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-gold-bright text-2xl font-extrabold text-navy shadow-[inset_0_1px_0_rgb(255_255_255/0.45)]">
-          D
+          P
         </span>
-        <h1 className="text-3xl font-bold text-ink">Darma Foundry</h1>
+        <h1 className="text-3xl font-bold text-ink">Plan Clarity</h1>
         <p className="mt-1 text-sm text-muted">Your pipeline, one next action at a time.</p>
 
         {denied && (

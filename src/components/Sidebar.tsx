@@ -30,8 +30,8 @@ export function Sidebar({
     <header className="shrink-0">
       <div className="topbar">
         <div className="flex items-center gap-[11px]">
-          <span className="brand-mark">D</span>
-          <span className="text-[15.5px] font-bold tracking-[-0.01em]">Darma Foundry</span>
+          <span className="brand-mark">P</span>
+          <span className="text-[15.5px] font-bold tracking-[-0.01em]">Plan Clarity</span>
           <span className="h-[22px] w-px bg-white/15" />
           <span className="font-mono text-[10px] tracking-[0.2em] text-gold-bright/80">SALES</span>
         </div>
