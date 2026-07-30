@@ -16,11 +16,7 @@ import {
   type DraftWorkItemContentBlock,
 } from "./workItemContent";
 import { Field, GhostButton, inputCls, Modal, PrimaryButton } from "./ui";
-
-const ASSIGNEES = [
-  { email: "amidha111@gmail.com", name: "Amit" },
-  { email: "rahul@klego.ai", name: "Rahul" },
-] as const;
+import { WORK_ITEM_ASSIGNEES, workItemAssignee } from "../lib/workItemAssignees";
 
 export function WorkItemModal({
   item,
@@ -66,7 +62,7 @@ export function WorkItemModal({
     try {
       const id = item?.id ?? newWorkItemId();
       const savedContent = await saveDraftContent(id, content);
-      const assignee = ASSIGNEES.find((person) => person.email === assigneeEmail) ?? ASSIGNEES[0];
+      const assignee = workItemAssignee(assigneeEmail);
       const input: WorkItemInput = {
         type,
         product,
@@ -129,7 +125,7 @@ export function WorkItemModal({
           </Field>
           <Field label="Assigned to" required>
             <select className={inputCls} value={assigneeEmail} onChange={(event) => setAssigneeEmail(event.target.value)}>
-              {ASSIGNEES.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
+              {WORK_ITEM_ASSIGNEES.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
             </select>
           </Field>
           <Field label="Status" required>
