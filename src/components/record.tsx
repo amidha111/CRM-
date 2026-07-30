@@ -42,22 +42,22 @@ export function RecordHeader({
 }) {
   void icon;
   return (
-    <div className="card overflow-hidden p-0">
+    <div className="card relative z-10 shrink-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-center gap-4 px-5 py-4">
-        <div className="flex items-center gap-3.5">
+        <div className="flex min-w-0 items-center gap-3.5">
           <span className="object-tile">
             <PIcon name={ENTITY_ICON[entity] ?? "target"} size={21} sw={1.9} />
           </span>
-          <div>
+          <div className="min-w-0">
             <p className="page-kind">{entity}</p>
             <div className="flex items-center gap-2">
-              <h1 className="text-[22px] font-bold leading-tight tracking-[-0.015em] text-ink">{title}</h1>
+              <h1 className="min-w-0 break-words text-[22px] font-bold leading-tight tracking-[-0.015em] text-ink">{title}</h1>
               <PIcon name="star" size={16} className="text-gold" />
             </div>
           </div>
         </div>
         <span className="min-w-0 flex-1" />
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className="relative z-20 flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
       <div className="grid border-t border-line-soft bg-tone sm:grid-cols-2 lg:grid-cols-4">
         {highlights.map((h) => (

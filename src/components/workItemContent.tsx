@@ -53,7 +53,7 @@ function StoredImage({ storagePath, name, className = "" }: { storagePath: strin
 
   if (failed) return <p className="rounded-md border border-danger/20 bg-danger-soft p-3 text-sm text-danger">Unable to load {name}.</p>;
   if (!url) return <div className={`animate-pulse rounded-lg bg-tone ${className || "h-48"}`} />;
-  return <img src={url} alt={name} className={`max-h-[560px] w-auto max-w-full rounded-lg border border-line object-contain ${className}`} />;
+  return <img src={url} alt={name} decoding="async" className={`block h-auto max-h-[560px] w-auto max-w-full rounded-lg border border-line object-contain ${className}`} />;
 }
 
 export function WorkItemDetailsEditor({
@@ -142,7 +142,7 @@ export function WorkItemDetailsEditor({
 export function WorkItemContent({ content }: { content: WorkItemContentBlock[] }) {
   if (!content.length) return <p className="text-sm text-muted">No details were provided.</p>;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4 overflow-hidden">
       {content.map((block) =>
         block.type === "text" ? (
           <p key={block.id} className="whitespace-pre-wrap text-sm leading-6 text-ink">
