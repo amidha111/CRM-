@@ -15,7 +15,6 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import { db, DEMO, functions, storage } from "../firebase";
-import { findWorkItemAssignee } from "./workItemAssignees";
 import {
   WORK_ITEM_PRIORITY_LABELS,
   WORK_ITEM_PRODUCT_LABELS,
@@ -26,6 +25,7 @@ import {
   type WorkItemContentBlock,
   type WorkItemEvent,
   type WorkItemInput,
+  type WorkItemAssignee,
   type WorkItemProduct,
 } from "../types";
 
@@ -41,7 +41,6 @@ function toDate(value: unknown): Date {
 
 function snapToWorkItem(snap: DocumentSnapshot): WorkItem {
   const data = snap.data({ serverTimestamps: "estimate" })!;
-  const knownAssignee = findWorkItemAssignee(data.assigneeEmail ?? "");
   return {
     id: snap.id,
     sequenceNumber: data.sequenceNumber ?? 0,
@@ -54,12 +53,21 @@ function snapToWorkItem(snap: DocumentSnapshot): WorkItem {
     priority: data.priority ?? "medium",
     status: data.status ?? "open",
     assigneeEmail: data.assigneeEmail ?? "",
-    assigneeName: knownAssignee?.name ?? data.assigneeName ?? "Unassigned",
+    assigneeName: data.assigneeName ?? "Unassigned",
     createdByEmail: data.createdByEmail ?? "",
     createdByName: data.createdByName ?? "Unknown",
     createdAt: toDate(data.createdAt),
     updatedAt: toDate(data.updatedAt),
   };
+}
+
+export async function fetchWorkItemAssignees(): Promise<WorkItemAssignee[]> {
+  if (DEMO) return [
+    { email: "amidha111@gmail.com", name: "Amit Midha" },
+    { email: "rahul@klego.ai", name: "Rahul Panchal" },
+  ];
+  const result = await httpsCallable<undefined, WorkItemAssignee[]>(functions, "listWorkItemAssignees")();
+  return result.data;
 }
 
 function snapToEvent(snap: DocumentSnapshot): WorkItemEvent {

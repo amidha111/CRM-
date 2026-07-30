@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Account, AllowedUser, Activity, Contact, Opportunity } from "../types";
 import {
   subscribeAccounts,
+  subscribeAccessRecord,
   subscribeActivities,
   subscribeAllowedUsers,
   subscribeContacts,
@@ -13,6 +14,26 @@ export function useOpportunities() {
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => subscribeOpportunities(setOpps, setError), []);
   return { opps, error };
+}
+
+export function useAccessRecord(email: string, enabled: boolean) {
+  const [accessRecord, setAccessRecord] = useState<AllowedUser | null>(null);
+  const [loading, setLoading] = useState(enabled);
+  const [error, setError] = useState<Error | null>(null);
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    return subscribeAccessRecord(email, (record) => {
+      setAccessRecord(record);
+      setLoading(false);
+    }, (reason) => {
+      setError(reason);
+      setLoading(false);
+    });
+  }, [email, enabled]);
+  return { accessRecord, loading, error };
 }
 
 export function useActivities() {

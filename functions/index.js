@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
@@ -17,6 +18,46 @@ const WORK_ITEM_ASSIGNEES = new Map([
   [ADMIN_EMAIL, "Amit Midha"],
   [RAHUL_EMAIL, "Rahul Panchal"],
 ]);
+
+function requestEmail(request) {
+  return typeof request.auth?.token?.email === "string"
+    ? request.auth.token.email.trim().toLowerCase()
+    : "";
+}
+
+async function assertAdminRequest(request) {
+  const email = requestEmail(request);
+  if (!request.auth?.token?.email_verified || email !== ADMIN_EMAIL) {
+    throw new HttpsError("permission-denied", "Only the CRM owner can manage workspace users.");
+  }
+  return email;
+}
+
+async function accessRecord(email) {
+  if (email === ADMIN_EMAIL) {
+    return {
+      email: ADMIN_EMAIL,
+      displayName: "Amit Midha",
+      disabled: false,
+      accessRole: "full",
+      workItemProducts: ["klego", "plan_clarity"],
+      canAssignWorkItems: true,
+    };
+  }
+  const snapshot = await db.doc(`allowedUsers/${email}`).get();
+  if (!snapshot.exists) return null;
+  const data = snapshot.data();
+  return {
+    email,
+    displayName: typeof data.displayName === "string" && data.displayName.trim()
+      ? data.displayName.trim()
+      : email.split("@")[0],
+    disabled: data.disabled === true,
+    accessRole: data.accessRole === "work_items_only" ? "work_items_only" : "full",
+    workItemProducts: Array.isArray(data.workItemProducts) ? data.workItemProducts : ["klego", "plan_clarity"],
+    canAssignWorkItems: data.canAssignWorkItems === true,
+  };
+}
 
 export const prepareRahulPasswordUser = onCall(
   { region: "us-central1" },
@@ -43,23 +84,246 @@ export const prepareRahulPasswordUser = onCall(
   },
 );
 
+export const preparePasswordUser = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    await assertAdminRequest(request);
+    const email = coerceString(request.data?.email, "email", 320).toLowerCase();
+    const access = await accessRecord(email);
+    if (!access || access.disabled) {
+      throw new HttpsError("failed-precondition", "Enable this CRM user before sending a password reset.");
+    }
+    try {
+      const existing = await adminAuth.getUserByEmail(email);
+      await adminAuth.updateUser(existing.uid, {
+        displayName: access.displayName,
+        disabled: false,
+        emailVerified: true,
+      });
+      return { email, created: false };
+    } catch (reason) {
+      if (reason?.code !== "auth/user-not-found") throw reason;
+      await adminAuth.createUser({
+        email,
+        emailVerified: true,
+        password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
+        displayName: access.displayName,
+      });
+      return { email, created: true };
+    }
+  },
+);
+
+export const listWorkItemAssignees = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const email = requestEmail(request);
+    if (!request.auth?.token?.email_verified) {
+      throw new HttpsError("unauthenticated", "Sign in to view Work Item assignees.");
+    }
+    const caller = await accessRecord(email);
+    if (!caller || caller.disabled) {
+      throw new HttpsError("permission-denied", "This account does not have CRM access.");
+    }
+    const snapshot = await db.collection("allowedUsers").get();
+    const people = [{ email: ADMIN_EMAIL, name: "Amit Midha" }];
+    snapshot.docs.forEach((record) => {
+      const data = record.data();
+      if (data.disabled === true || data.canAssignWorkItems !== true) return;
+      people.push({
+        email: String(data.email ?? record.id).toLowerCase(),
+        name: String(data.displayName ?? data.email ?? record.id),
+      });
+    });
+    return people.sort((left, right) => left.name.localeCompare(right.name));
+  },
+);
+
+async function commitInChunks(updates) {
+  for (let start = 0; start < updates.length; start += 450) {
+    const batch = db.batch();
+    updates.slice(start, start + 450).forEach(({ ref, data }) => batch.update(ref, data));
+    await batch.commit();
+  }
+}
+
+export const updateWorkspaceUser = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    await assertAdminRequest(request);
+    const currentEmail = coerceString(request.data?.currentEmail, "currentEmail", 320).toLowerCase();
+    const email = coerceString(request.data?.email, "email", 320).toLowerCase();
+    const displayName = coerceString(request.data?.displayName, "displayName", 200);
+    const disabled = request.data?.disabled === true;
+    if (![currentEmail, email].every((value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))) {
+      throw new HttpsError("invalid-argument", "Enter a valid access email.");
+    }
+    if (currentEmail === ADMIN_EMAIL || email === ADMIN_EMAIL) {
+      throw new HttpsError("failed-precondition", "The permanent owner record cannot be changed here.");
+    }
+    const currentRef = db.doc(`allowedUsers/${currentEmail}`);
+    const current = await currentRef.get();
+    if (!current.exists) throw new HttpsError("not-found", "This workspace user no longer exists.");
+    if (email !== currentEmail && (await db.doc(`allowedUsers/${email}`).get()).exists) {
+      throw new HttpsError("already-exists", "Another workspace user already uses that email.");
+    }
+
+    let authUser = null;
+    try {
+      authUser = await adminAuth.getUserByEmail(currentEmail);
+      if (email !== currentEmail) {
+        try {
+          await adminAuth.getUserByEmail(email);
+          throw new HttpsError("already-exists", "A Firebase account already uses that email.");
+        } catch (reason) {
+          if (reason instanceof HttpsError) throw reason;
+          if (reason?.code !== "auth/user-not-found") throw reason;
+        }
+      }
+    } catch (reason) {
+      if (reason?.code !== "auth/user-not-found") throw reason;
+    }
+
+    if (authUser) {
+      await adminAuth.updateUser(authUser.uid, { email, displayName, disabled });
+    }
+
+    const data = current.data();
+    await db.runTransaction(async (transaction) => {
+      transaction.set(db.doc(`allowedUsers/${email}`), {
+        ...data,
+        email,
+        displayName,
+        disabled,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      if (email !== currentEmail) transaction.delete(currentRef);
+    });
+
+    const assigned = await db.collection("workItems").where("assigneeEmail", "==", currentEmail).get();
+    await commitInChunks(assigned.docs.map((record) => ({
+      ref: record.ref,
+      data: { assigneeEmail: email, assigneeName: displayName, updatedAt: FieldValue.serverTimestamp() },
+    })));
+    return { email, displayName, disabled, updatedWorkItems: assigned.size };
+  },
+);
+
+export const getWorkspaceUsage = onCall(
+  { region: "us-central1", timeoutSeconds: 120, memory: "512MiB" },
+  async (request) => {
+    await assertAdminRequest(request);
+    const bucket = getStorage().bucket("founderflow-crm-af1.firebasestorage.app");
+    const [files] = await bucket.getFiles();
+    const workItems = await db.collection("workItems").get();
+    const workItemData = workItems.docs.map((record) => ({
+      id: record.id,
+      referenceId: String(record.get("referenceId") ?? record.id),
+      subject: String(record.get("subject") ?? "Untitled Work Item"),
+      content: Array.isArray(record.get("content")) ? record.get("content") : [],
+    }));
+    const fileMetadata = await Promise.all(files.map(async (file) => {
+      const [metadata] = await file.getMetadata();
+      return {
+        name: file.name,
+        bytes: Number(metadata.size ?? 0),
+        contentType: String(metadata.contentType ?? "application/octet-stream"),
+        updatedAt: metadata.updated ?? null,
+        linkedWorkItems: workItemData
+          .filter((workItem) => workItem.content.some((block) => block?.storagePath === file.name))
+          .map(({ id, referenceId, subject }) => ({ id, referenceId, subject })),
+      };
+    }));
+    const breakdown = new Map();
+    fileMetadata.forEach(({ name, bytes }) => {
+      const label = name.startsWith("workItems/") ? "Work Item screenshots" : (name.split("/")[0] || "Other files");
+      const current = breakdown.get(label) ?? { label, bytes: 0, fileCount: 0 };
+      current.bytes += bytes;
+      current.fileCount += 1;
+      breakdown.set(label, current);
+    });
+    const collectionNames = ["accounts", "contacts", "opportunities", "activities", "workItems", "allowedUsers"];
+    const counts = await Promise.all(collectionNames.map(async (name) => {
+      const snapshot = await db.collection(name).count().get();
+      return [name, snapshot.data().count];
+    }));
+    const estimateSnapshots = await Promise.all(collectionNames.map((name) => db.collection(name).get()));
+    const events = await db.collectionGroup("events").get();
+    const firestoreEstimatedBytes = [...estimateSnapshots.flatMap((snapshot) => snapshot.docs), ...events.docs]
+      .reduce((sum, record) => sum + Buffer.byteLength(record.ref.path) + Buffer.byteLength(JSON.stringify(record.data())), 0);
+    const gib = 1024 ** 3;
+    const storageBillableGib = Math.max(0, fileMetadata.reduce((sum, file) => sum + file.bytes, 0) / gib - 5);
+    const firestoreBillableGib = Math.max(0, firestoreEstimatedBytes / gib - 1);
+    const estimatedStorageCostUsd = storageBillableGib * 0.02 + firestoreBillableGib * 0.000205479 * 730;
+    return {
+      storageBytes: fileMetadata.reduce((sum, file) => sum + file.bytes, 0),
+      fileCount: fileMetadata.length,
+      storageBreakdown: [...breakdown.values()].sort((left, right) => right.bytes - left.bytes),
+      files: fileMetadata.sort((left, right) => right.bytes - left.bytes),
+      recordCounts: Object.fromEntries(counts),
+      firestoreEstimatedBytes,
+      estimatedStorageCostUsd,
+      billingEnabled: true,
+      billingExportConnected: false,
+      billingReportUrl: "https://console.cloud.google.com/billing/0192AB-30A8EF-2E84A2/reports?project=founderflow-crm-af1",
+      measuredAt: new Date().toISOString(),
+    };
+  },
+);
+
+export const deleteWorkspaceFile = onCall(
+  { region: "us-central1", timeoutSeconds: 120 },
+  async (request) => {
+    const actorEmail = await assertAdminRequest(request);
+    const storagePath = coerceString(request.data?.storagePath, "storagePath", 1_000);
+    if (storagePath.startsWith("/") || storagePath.includes("..")) {
+      throw new HttpsError("invalid-argument", "The storage path is invalid.");
+    }
+    const bucket = getStorage().bucket("founderflow-crm-af1.firebasestorage.app");
+    const file = bucket.file(storagePath);
+    const [exists] = await file.exists();
+    if (!exists) throw new HttpsError("not-found", "This file no longer exists.");
+
+    const workItems = await db.collection("workItems").get();
+    const linked = workItems.docs.flatMap((record) => {
+      const content = Array.isArray(record.get("content")) ? record.get("content") : [];
+      const nextContent = content.filter((block) => block?.storagePath !== storagePath);
+      return nextContent.length === content.length ? [] : [{ record, nextContent }];
+    });
+    for (let start = 0; start < linked.length; start += 200) {
+      const batch = db.batch();
+      linked.slice(start, start + 200).forEach(({ record, nextContent }) => {
+        batch.update(record.ref, { content: nextContent, updatedAt: FieldValue.serverTimestamp() });
+        batch.set(record.ref.collection("events").doc(), {
+          kind: "system",
+          body: `Removed stored file ${storagePath}.`,
+          actorEmail,
+          actorName: "Amit Midha",
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    }
+    await file.delete();
+    return { storagePath, updatedWorkItems: linked.length };
+  },
+);
+
 async function assertWorkItemsAllowed(request, product) {
   const token = request.auth?.token;
   const email = typeof token?.email === "string" ? token.email.trim().toLowerCase() : "";
   if (!email || !token?.email_verified) {
     throw new HttpsError("unauthenticated", "Sign in before creating a Work Item.");
   }
-  if (email !== ADMIN_EMAIL && email !== RAHUL_EMAIL) {
-    const allowed = await db.doc(`allowedUsers/${email}`).get();
-    if (!allowed.exists) {
-      throw new HttpsError("permission-denied", "This account does not have access to Work Items.");
-    }
+  const access = await accessRecord(email);
+  if (!access || access.disabled) {
+    throw new HttpsError("permission-denied", "This account does not have access to Work Items.");
   }
-  if (email === ANNE_EMAIL && product !== "plan_clarity") {
+  if (!access.workItemProducts.includes(product)) {
     throw new HttpsError("permission-denied", "This account can only create Plan Clarity Work Items.");
   }
   const tokenName = typeof token?.name === "string" ? token.name.trim() : "";
-  return { email, name: WORK_ITEM_ASSIGNEES.get(email) ?? (tokenName || email) };
+  return { email, name: access.displayName || tokenName || email };
 }
 
 function oneOf(value, values, field) {
@@ -164,10 +428,11 @@ export const createWorkItemRecord = onCall(
     const product = oneOf(raw.product, ["klego", "plan_clarity"], "product");
     const actor = await assertWorkItemsAllowed(request, product);
     const assigneeEmail = coerceString(raw.assigneeEmail, "assigneeEmail", 320).toLowerCase();
-    const assigneeName = WORK_ITEM_ASSIGNEES.get(assigneeEmail);
-    if (!assigneeName) {
+    const assignee = await accessRecord(assigneeEmail);
+    if (!assignee || assignee.disabled || !assignee.canAssignWorkItems) {
       throw new HttpsError("invalid-argument", "assigneeEmail is not a Work Item assignee.");
     }
+    const assigneeName = assignee.displayName;
     const input = {
       type: oneOf(raw.type, ["bug", "feature"], "type"),
       product,
@@ -220,13 +485,12 @@ async function assertAllowed(request) {
   if (!email || !token?.email_verified) {
     throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
   }
-  if (email === ADMIN_EMAIL) return;
-  if (email === RAHUL_EMAIL) {
-    throw new HttpsError("permission-denied", "This account only has access to Work Items.");
-  }
-  const allowed = await db.doc(`allowedUsers/${email}`).get();
-  if (!allowed.exists) {
+  const access = await accessRecord(email);
+  if (!access || access.disabled) {
     throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
+  }
+  if (access.accessRole === "work_items_only") {
+    throw new HttpsError("permission-denied", "This account only has access to Work Items.");
   }
 }
 

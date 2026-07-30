@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode, type SyntheticEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, DEMO } from "./firebase";
-import { useAccounts, useActivities, useContacts, useOpportunities } from "./lib/hooks";
-import type { Actor } from "./types";
+import { useAccessRecord, useAccounts, useActivities, useContacts, useOpportunities } from "./lib/hooks";
+import type { Actor, WorkItemProduct } from "./types";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import type { OpenRecord } from "./components/record";
@@ -17,8 +17,7 @@ import { AccountRecordPage } from "./pages/AccountRecord";
 import { ContactRecordPage } from "./pages/ContactRecord";
 import { WorkItemsPage } from "./pages/WorkItems";
 import { WorkItemRecordPage } from "./pages/WorkItemRecord";
-import { useWorkItems } from "./lib/workItemHooks";
-import { findWorkItemAssignee } from "./lib/workItemAssignees";
+import { useWorkItemAssignees, useWorkItems } from "./lib/workItemHooks";
 import { recordPath, recordRouteFromPath, type RecordRoute, type RouteRecordType } from "./lib/recordRoutes";
 
 function isPermissionDenied(e: Error | null): boolean {
@@ -34,7 +33,12 @@ const RECORD_HOME: Record<RecordRef["type"], Page> = {
 };
 
 type WorkspaceUser = { name: string; email: string; uid: string };
-type PreviewUser = { name: string; email: string };
+type PreviewUser = {
+  name: string;
+  email: string;
+  accessRole: "full" | "work_items_only";
+  workItemProducts: WorkItemProduct[];
+};
 
 function ReadOnlyPreview({ user, onExit, children }: { user: PreviewUser; onExit: () => void; children: ReactNode }) {
   function blockInteractiveEvent(event: SyntheticEvent) {
@@ -105,6 +109,7 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false, onLoginAs }: { 
   const { contacts } = useContacts();
   const { accounts } = useAccounts();
   const { items: workItems, error: workItemsError } = useWorkItems(planClarityWorkItemsOnly ? "plan_clarity" : undefined);
+  const { assignees, error: assigneesError } = useWorkItemAssignees();
 
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
 
@@ -120,11 +125,11 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false, onLoginAs }: { 
     setPage(type === "workItem" ? "workItems" : RECORD_HOME[type]);
   }, [recordRoute.route]);
 
-  if (isPermissionDenied(oppError) || isPermissionDenied(workItemsError)) {
+  if (isPermissionDenied(oppError) || isPermissionDenied(workItemsError) || isPermissionDenied(assigneesError)) {
     return <SignIn denied />;
   }
 
-  if (!opps || !activities || !contacts || !accounts || !workItems) {
+  if (!opps || !activities || !contacts || !accounts || !workItems || !assignees) {
     return (
       <div className="dot-grid flex min-h-screen items-center justify-center">
         <p className="text-muted">Loading workspace…</p>
@@ -207,7 +212,7 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false, onLoginAs }: { 
   const workItem = recordRoute.route?.type === "workItem"
     ? workItems.find((item) => item.referenceId === recordRoute.route?.referenceId)
     : null;
-  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onBack={recordRoute.close} /> : null;
+  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} assignees={assignees} onBack={recordRoute.close} /> : null;
   const invalidRoute = !!recordRoute.route && !recordView && !workItemView;
 
   return (
@@ -237,7 +242,7 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false, onLoginAs }: { 
           {page === "dashboard" && (
             <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
           )}
-          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onOpen={(item) => recordRoute.open("workItem", item.referenceId)} />}
+          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} assignees={assignees} onOpen={(item) => recordRoute.open("workItem", item.referenceId)} />}
           {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} userUid={user.uid} onLoginAs={onLoginAs} />}
         </>
       ))}
@@ -248,25 +253,57 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false, onLoginAs }: { 
 function WorkItemsOnlyWorkspace({ user, planClarityOnly = false }: { user: WorkspaceUser; planClarityOnly?: boolean }) {
   const allowedProducts = planClarityOnly ? (["plan_clarity"] as const) : (["klego", "plan_clarity"] as const);
   const { items, error } = useWorkItems(planClarityOnly ? "plan_clarity" : undefined);
+  const { assignees, error: assigneesError } = useWorkItemAssignees();
   const recordRoute = useRecordRoute();
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
-  if (isPermissionDenied(error)) return <SignIn denied />;
-  if (!items) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading work items…</p></div>;
+  if (isPermissionDenied(error) || isPermissionDenied(assigneesError)) return <SignIn denied />;
+  if (!items || !assignees) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading work items…</p></div>;
   const workItemReference = recordRoute.route?.type === "workItem" ? recordRoute.route.referenceId : null;
   const item = workItemReference ? items.find((candidate) => candidate.referenceId === workItemReference) : null;
   return <div className="dot-grid flex h-screen flex-col overflow-hidden">
     <Sidebar page="workItems" onNavigate={recordRoute.close} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
     {item
-      ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onBack={recordRoute.close} />
+      ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} assignees={assignees} onBack={recordRoute.close} />
       : recordRoute.route
         ? <RecordRouteUnavailable onBack={recordRoute.close} />
-        : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onOpen={(candidate) => recordRoute.open("workItem", candidate.referenceId)} />}
+        : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} assignees={assignees} onOpen={(candidate) => recordRoute.open("workItem", candidate.referenceId)} />}
   </div>;
+}
+
+function AuthenticatedApp({ user }: { user: User }) {
+  const email = (user.email ?? "").trim().toLowerCase();
+  const admin = email === "amidha111@gmail.com";
+  const { accessRecord, loading, error } = useAccessRecord(email, !admin);
+  const [previewUser, setPreviewUser] = useState<PreviewUser | null>(null);
+
+  if (loading) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading access…</p></div>;
+  if (error || (!admin && (!accessRecord || accessRecord.disabled))) return <SignIn denied />;
+
+  const workspaceUser: WorkspaceUser = {
+    name: admin ? "Amit Midha" : accessRecord!.displayName,
+    email,
+    uid: user.uid,
+  };
+  if (previewUser && admin) {
+    const previewWorkspaceUser = { name: previewUser.name, email: previewUser.email, uid: `preview:${previewUser.email}` };
+    const planClarityOnly = !previewUser.workItemProducts.includes("klego");
+    const workspace = previewUser.accessRole === "work_items_only"
+      ? <WorkItemsOnlyWorkspace user={previewWorkspaceUser} planClarityOnly={planClarityOnly} />
+      : <FullWorkspace user={previewWorkspaceUser} planClarityWorkItemsOnly={planClarityOnly} />;
+    return <ReadOnlyPreview user={previewUser} onExit={() => setPreviewUser(null)}>{workspace}</ReadOnlyPreview>;
+  }
+  if (accessRecord?.accessRole === "work_items_only") {
+    return <WorkItemsOnlyWorkspace user={workspaceUser} planClarityOnly={!accessRecord.workItemProducts.includes("klego")} />;
+  }
+  return <FullWorkspace
+    user={workspaceUser}
+    planClarityWorkItemsOnly={!admin && !accessRecord!.workItemProducts.includes("klego")}
+    onLoginAs={admin ? setPreviewUser : undefined}
+  />;
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null | "loading">(DEMO ? null : "loading");
-  const [previewUser, setPreviewUser] = useState<PreviewUser | null>(null);
 
   useEffect(() => {
     if (DEMO) return;
@@ -289,19 +326,5 @@ export default function App() {
     return <SignIn denied={false} />;
   }
 
-  const email = user.email ?? "";
-  const knownWorkItemUser = findWorkItemAssignee(email);
-  const workspaceUser = { name: knownWorkItemUser?.name ?? user.displayName ?? email ?? "User", email, uid: user.uid };
-  const normalizedEmail = workspaceUser.email.trim().toLowerCase();
-  if (previewUser && normalizedEmail === "amidha111@gmail.com") {
-    const previewWorkspaceUser = { ...previewUser, uid: `preview:${previewUser.email}` };
-    const previewEmail = previewUser.email.trim().toLowerCase();
-    const workspace = previewEmail === "rahul@klego.ai"
-      ? <WorkItemsOnlyWorkspace user={previewWorkspaceUser} />
-      : <FullWorkspace user={previewWorkspaceUser} planClarityWorkItemsOnly={previewEmail === "lewandowskiannm@gmail.com"} />;
-    return <ReadOnlyPreview user={previewUser} onExit={() => setPreviewUser(null)}>{workspace}</ReadOnlyPreview>;
-  }
-  if (normalizedEmail === "rahul@klego.ai") return <WorkItemsOnlyWorkspace user={workspaceUser} />;
-  if (normalizedEmail === "lewandowskiannm@gmail.com") return <FullWorkspace user={workspaceUser} planClarityWorkItemsOnly />;
-  return <FullWorkspace user={workspaceUser} onLoginAs={normalizedEmail === "amidha111@gmail.com" ? setPreviewUser : undefined} />;
+  return <AuthenticatedApp user={user} />;
 }

@@ -155,6 +155,11 @@ function snapToAllowedUser(snap: DocumentSnapshot): AllowedUser {
   return {
     id: snap.id,
     email: d.email ?? snap.id,
+    displayName: d.displayName ?? (d.email ?? snap.id).split("@")[0],
+    disabled: d.disabled === true,
+    accessRole: d.accessRole === "work_items_only" ? "work_items_only" : "full",
+    workItemProducts: (d.workItemProducts ?? ["klego", "plan_clarity"]),
+    canAssignWorkItems: d.canAssignWorkItems === true,
     addedBy: d.addedBy ?? "",
     createdAt: toDate(d.createdAt),
     updatedAt: toDate(d.updatedAt),
@@ -232,6 +237,11 @@ export function subscribeAllowedUsers(
       {
         id: "demo@example.com",
         email: "demo@example.com",
+        displayName: "Demo User",
+        disabled: false,
+        accessRole: "full",
+        workItemProducts: ["klego", "plan_clarity"],
+        canAssignWorkItems: false,
         addedBy: "demo",
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -243,6 +253,23 @@ export function subscribeAllowedUsers(
   return onSnapshot(
     q,
     (qs: QuerySnapshot) => cb(qs.docs.map(snapToAllowedUser)),
+    onError,
+  );
+}
+
+export function subscribeAccessRecord(
+  email: string,
+  cb: (user: AllowedUser | null) => void,
+  onError: (e: Error) => void,
+): Unsub {
+  const normalized = normalizeEmail(email);
+  if (DEMO || isWorkspaceAdmin(normalized)) {
+    cb(null);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, "allowedUsers", normalized),
+    (snapshot) => cb(snapshot.exists() ? snapToAllowedUser(snapshot) : null),
     onError,
   );
 }
@@ -692,7 +719,7 @@ export async function removeStakeholder(opp: Opportunity, contactId: string, act
   await batch.commit();
 }
 
-export async function addAllowedUser(email: string, actor: Actor): Promise<void> {
+export async function addAllowedUser(email: string, displayName: string, actor: Actor): Promise<void> {
   if (DEMO) return;
   const normalized = normalizeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
@@ -703,6 +730,11 @@ export async function addAllowedUser(email: string, actor: Actor): Promise<void>
   }
   await setDoc(doc(db, "allowedUsers", normalized), {
     email: normalized,
+    displayName: displayName.trim() || normalized.split("@")[0],
+    disabled: false,
+    accessRole: "full",
+    workItemProducts: ["klego", "plan_clarity"],
+    canAssignWorkItems: false,
     addedBy: actor.uid,
     addedByName: actor.name,
     createdAt: serverTimestamp(),

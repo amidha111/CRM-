@@ -165,9 +165,41 @@ export interface Actor {
 export interface AllowedUser {
   id: string;
   email: string;
+  displayName: string;
+  disabled: boolean;
+  accessRole: "full" | "work_items_only";
+  workItemProducts: WorkItemProduct[];
+  canAssignWorkItems: boolean;
   addedBy: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface WorkItemAssignee {
+  email: string;
+  name: string;
+}
+
+export interface WorkspaceUsage {
+  storageBytes: number;
+  fileCount: number;
+  storageBreakdown: { label: string; bytes: number; fileCount: number }[];
+  files: WorkspaceFile[];
+  recordCounts: Record<string, number>;
+  firestoreEstimatedBytes: number;
+  estimatedStorageCostUsd: number;
+  billingEnabled: boolean;
+  billingExportConnected: boolean;
+  billingReportUrl: string;
+  measuredAt: Date;
+}
+
+export interface WorkspaceFile {
+  name: string;
+  bytes: number;
+  contentType: string;
+  updatedAt: Date | null;
+  linkedWorkItems: { id: string; referenceId: string; subject: string }[];
 }
 
 export type WorkItemType = "bug" | "feature";

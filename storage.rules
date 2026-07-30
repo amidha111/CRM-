@@ -8,16 +8,19 @@ service firebase.storage {
     }
 
     function isPlanClarityOnlyUser() {
-      return isSignedInVerified()
-        && request.auth.token.email == 'lewandowskiannm@gmail.com';
+      return hasWorkItemsAccess()
+        && request.auth.token.email != 'amidha111@gmail.com'
+        && !firestore.get(/databases/(default)/documents/allowedUsers/$(request.auth.token.email)).data.workItemProducts.hasAny(['klego']);
     }
 
     function hasWorkItemsAccess() {
       return isSignedInVerified()
         && (
           request.auth.token.email == 'amidha111@gmail.com'
-          || request.auth.token.email == 'rahul@klego.ai'
-          || firestore.exists(/databases/(default)/documents/allowedUsers/$(request.auth.token.email))
+          || (
+            firestore.exists(/databases/(default)/documents/allowedUsers/$(request.auth.token.email))
+            && firestore.get(/databases/(default)/documents/allowedUsers/$(request.auth.token.email)).data.disabled != true
+          )
         );
     }
 

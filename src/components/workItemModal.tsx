@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type {
   Actor,
   WorkItem,
+  WorkItemAssignee,
   WorkItemInput,
   WorkItemPriority,
   WorkItemProduct,
@@ -16,7 +17,6 @@ import {
   type DraftWorkItemContentBlock,
 } from "./workItemContent";
 import { Field, GhostButton, inputCls, Modal, PrimaryButton } from "./ui";
-import { WORK_ITEM_ASSIGNEES, workItemAssignee } from "../lib/workItemAssignees";
 
 export function WorkItemModal({
   item,
@@ -24,12 +24,14 @@ export function WorkItemModal({
   actorEmail,
   onClose,
   allowedProducts = ["klego", "plan_clarity"],
+  assignees,
 }: {
   item?: WorkItem;
   actor: Actor;
   actorEmail: string;
   onClose: () => void;
   allowedProducts?: WorkItemProduct[];
+  assignees: WorkItemAssignee[];
 }) {
   const [type, setType] = useState<WorkItemType>(item?.type ?? "bug");
   const [product, setProduct] = useState<WorkItemProduct>(item?.product ?? allowedProducts[0] ?? "plan_clarity");
@@ -38,7 +40,7 @@ export function WorkItemModal({
   const [videoUrl, setVideoUrl] = useState(item?.videoUrl ?? "");
   const [priority, setPriority] = useState<WorkItemPriority>(item?.priority ?? "medium");
   const [status, setStatus] = useState<WorkItemStatus>(item?.status ?? "open");
-  const [assigneeEmail, setAssigneeEmail] = useState(item?.assigneeEmail ?? "amidha111@gmail.com");
+  const [assigneeEmail, setAssigneeEmail] = useState(item?.assigneeEmail ?? assignees[0]?.email ?? "amidha111@gmail.com");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +64,8 @@ export function WorkItemModal({
     try {
       const id = item?.id ?? newWorkItemId();
       const savedContent = await saveDraftContent(id, content);
-      const assignee = workItemAssignee(assigneeEmail);
+      const assignee = assignees.find((person) => person.email === assigneeEmail) ?? assignees[0];
+      if (!assignee) throw new Error("No enabled Work Item assignee is available.");
       const input: WorkItemInput = {
         type,
         product,
@@ -125,7 +128,7 @@ export function WorkItemModal({
           </Field>
           <Field label="Assigned to" required>
             <select className={inputCls} value={assigneeEmail} onChange={(event) => setAssigneeEmail(event.target.value)}>
-              {WORK_ITEM_ASSIGNEES.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
+              {assignees.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
             </select>
           </Field>
           <Field label="Status" required>

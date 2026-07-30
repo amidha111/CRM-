@@ -14,13 +14,15 @@ service cloud.firestore {
     }
 
     function isWorkItemsOnlyUser() {
-      return isSignedInVerified()
-        && request.auth.token.email == 'rahul@klego.ai';
+      return isAllowedUser()
+        && !isAdmin()
+        && get(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email)).data.accessRole == 'work_items_only';
     }
 
     function isPlanClarityOnlyUser() {
-      return isSignedInVerified()
-        && request.auth.token.email == 'lewandowskiannm@gmail.com';
+      return isAllowedUser()
+        && !isAdmin()
+        && !get(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email)).data.workItemProducts.hasAny(['klego']);
     }
 
     function isAllowedUser() {
@@ -28,6 +30,7 @@ service cloud.firestore {
         || (
           isSignedInVerified()
           && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email))
+          && get(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email)).data.disabled != true
         );
     }
 
@@ -37,7 +40,7 @@ service cloud.firestore {
     }
 
     function hasWorkItemsAccess() {
-      return isAllowedUser() || isWorkItemsOnlyUser();
+      return isAllowedUser();
     }
 
     function createsWithoutRecordNumber() {
@@ -103,7 +106,8 @@ service cloud.firestore {
     }
 
     match /allowedUsers/{email} {
-      allow read: if isAdmin();
+      allow read: if isAdmin()
+        || (isSignedInVerified() && request.auth.token.email == email);
       allow create, update: if isAdmin()
         && email != 'amidha111@gmail.com'
         && request.resource.data.email == email;

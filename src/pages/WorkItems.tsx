@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Actor, WorkItem, WorkItemPriority, WorkItemProduct, WorkItemType } from "../types";
+import type { Actor, WorkItem, WorkItemAssignee, WorkItemPriority, WorkItemProduct, WorkItemType } from "../types";
 import {
   WORK_ITEM_PRIORITY_LABELS,
   WORK_ITEM_PRODUCT_LABELS,
@@ -36,12 +36,14 @@ export function WorkItemsPage({
   actorEmail,
   onOpen,
   allowedProducts = ["klego", "plan_clarity"],
+  assignees,
 }: {
   items: WorkItem[];
   actor: Actor;
   actorEmail: string;
   onOpen: (item: WorkItem) => void;
   allowedProducts?: WorkItemProduct[];
+  assignees: WorkItemAssignee[];
 }) {
   const [search, setSearch] = useState("");
   const [type, setType] = useState<WorkItemType | "all">("all");
@@ -98,7 +100,7 @@ export function WorkItemsPage({
           {filtered.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted">No work items match these filters.</p>}
         </div>
       )}
-      {showNew && <WorkItemModal actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} onClose={() => setShowNew(false)} />}
+      {showNew && <WorkItemModal actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} assignees={assignees} onClose={() => setShowNew(false)} />}
     </div>
   );
 }

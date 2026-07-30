@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { Actor, WorkItem, WorkItemProduct, WorkItemStatus } from "../types";
+import type { Actor, WorkItem, WorkItemAssignee, WorkItemProduct, WorkItemStatus } from "../types";
 import { WORK_ITEM_PRODUCT_LABELS } from "../types";
 import { Breadcrumb, RecordHeader, RecordSection } from "../components/record";
 import { PIcon } from "../components/icons";
@@ -9,10 +9,9 @@ import { WorkItemModal } from "../components/workItemModal";
 import { WorkItemBadge } from "./WorkItems";
 import { useWorkItemEvents } from "../lib/workItemHooks";
 import { addWorkItemComment, updateWorkItem } from "../lib/workItemsStore";
-import { WORK_ITEM_ASSIGNEES, workItemAssignee } from "../lib/workItemAssignees";
 import { formatDate, relativeTime } from "../lib/format";
 
-export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"] }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[] }) {
+export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"], assignees }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[]; assignees: WorkItemAssignee[] }) {
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,7 +56,8 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
 
   async function changeAssignee(email: string) {
     if (email === item.assigneeEmail) return;
-    const assignee = workItemAssignee(email);
+    const assignee = assignees.find((person) => person.email === email);
+    if (!assignee) return;
     setAssigneeBusy(true);
     setAssigneeError(null);
     try {
@@ -91,7 +91,7 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
           onChange={(event) => void changeAssignee(event.target.value)}
           aria-label="Change Work Item assignee"
         >
-          {WORK_ITEM_ASSIGNEES.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
+          {assignees.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
         </select>
       </label>
       <label className="flex items-center gap-2">
@@ -144,6 +144,6 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
         </RecordSection>
       </div>
     </div>
-    {editing && <WorkItemModal item={item} actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} onClose={() => setEditing(false)} />}
+    {editing && <WorkItemModal item={item} actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} assignees={assignees} onClose={() => setEditing(false)} />}
   </main>;
 }
