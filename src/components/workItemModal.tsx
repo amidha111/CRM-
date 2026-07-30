@@ -137,7 +137,7 @@ export function WorkItemModal({
               <option value="open">Open</option>
               <option value="in_progress">In Progress</option>
               <option value="ready_for_review">Ready for Review</option>
-              <option value="closed">Closed</option>
+              <option value="closed">Resolved</option>
             </select>
           </Field>
         </div>
