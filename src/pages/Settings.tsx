@@ -147,7 +147,7 @@ export function SettingsPage({
                     <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div>
                         <p className="text-sm font-semibold text-ink">{u.email}</p>
-                        <p className="text-xs text-muted">{anne ? "Plan Clarity Work Items only" : "Full CRM member access"}</p>
+                        <p className="text-xs text-muted">{anne ? "Full CRM · Plan Clarity Work Items only" : "Full CRM member access"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         {anne && <span className="rounded-md border border-line bg-tone px-2 py-1 text-xs font-semibold text-muted">Plan Clarity only</span>}
