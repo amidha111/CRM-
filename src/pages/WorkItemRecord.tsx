@@ -52,7 +52,7 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
     }
   }
 
-  return <main className="page-frame overflow-y-auto">
+  return <main className="page-frame min-w-0">
     <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={item.subject} /></div>
     <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<>
       <label className="flex items-center gap-2">
@@ -78,8 +78,8 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
       { label: "Status", value: <WorkItemBadge value={item.status} kind="status" /> },
     ]} />
     {statusError && <p className="mt-3 rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">{statusError}</p>}
-    <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
-      <div className="flex flex-col gap-4">
+    <div className="relative z-0 mt-4 grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+      <div className="flex min-w-0 flex-col gap-4">
         <RecordSection title="Details"><WorkItemContent content={item.content} /></RecordSection>
         <RecordSection title="Issue Explained">
           {item.videoUrl ? <div className="flex flex-col gap-3">
@@ -88,7 +88,7 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
           </div> : <p className="text-sm text-muted">No walkthrough video has been added.</p>}
         </RecordSection>
       </div>
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         <RecordSection title="Assignment">
           <div className="flex items-center gap-3"><Avatar name={item.assigneeName} size={34} /><div><p className="font-semibold text-ink">{item.assigneeName}</p><p className="text-xs text-muted">{item.assigneeEmail}</p></div></div>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-muted">Created by</dt><dd className="font-semibold">{item.createdByName}</dd></div><div><dt className="text-muted">Created</dt><dd className="font-semibold">{formatDate(item.createdAt)}</dd></div></dl>
