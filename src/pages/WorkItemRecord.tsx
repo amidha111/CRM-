@@ -1,0 +1,67 @@
+import { useState, type FormEvent } from "react";
+import type { Actor, WorkItem, WorkItemProduct } from "../types";
+import { WORK_ITEM_PRODUCT_LABELS } from "../types";
+import { Breadcrumb, RecordHeader, RecordSection } from "../components/record";
+import { PIcon } from "../components/icons";
+import { Avatar, PrimaryButton, inputCls } from "../components/ui";
+import { WorkItemContent, videoEmbedUrl } from "../components/workItemContent";
+import { WorkItemModal } from "../components/workItemModal";
+import { WorkItemBadge } from "./WorkItems";
+import { useWorkItemEvents } from "../lib/workItemHooks";
+import { addWorkItemComment } from "../lib/workItemsStore";
+import { formatDate, relativeTime } from "../lib/format";
+
+export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"] }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[] }) {
+  const [editing, setEditing] = useState(false);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { events, error: eventsError } = useWorkItemEvents(item.id);
+  const embedUrl = videoEmbedUrl(item.videoUrl);
+
+  async function submitComment(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError(null);
+    try { await addWorkItemComment(item.id, comment, actor, actorEmail); setComment(""); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to add comment."); }
+    finally { setBusy(false); }
+  }
+
+  return <main className="page-frame overflow-y-auto">
+    <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={item.subject} /></div>
+    <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<button type="button" className="toolbar-button" onClick={() => setEditing(true)}><PIcon name="edit" size={15} />Edit</button>} highlights={[
+      { label: "Type", value: <WorkItemBadge value={item.type} kind="type" /> },
+      { label: "Product", value: WORK_ITEM_PRODUCT_LABELS[item.product] },
+      { label: "Priority", value: <WorkItemBadge value={item.priority} kind="priority" /> },
+      { label: "Status", value: <WorkItemBadge value={item.status} kind="status" /> },
+    ]} />
+    <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+      <div className="flex flex-col gap-4">
+        <RecordSection title="Details"><WorkItemContent content={item.content} /></RecordSection>
+        <RecordSection title="Issue Explained">
+          {item.videoUrl ? <div className="flex flex-col gap-3">
+            {embedUrl && <div className="aspect-video overflow-hidden rounded-lg border border-line bg-navy"><iframe className="h-full w-full" src={embedUrl} title="Issue walkthrough video" allow="fullscreen; picture-in-picture" allowFullScreen /></div>}
+            <a className="inline-flex items-center gap-2 self-start font-semibold text-gold-deep hover:underline" href={item.videoUrl} target="_blank" rel="noreferrer">Open walkthrough video <PIcon name="chevronRight" size={14} /></a>
+          </div> : <p className="text-sm text-muted">No walkthrough video has been added.</p>}
+        </RecordSection>
+      </div>
+      <div className="flex flex-col gap-4">
+        <RecordSection title="Assignment">
+          <div className="flex items-center gap-3"><Avatar name={item.assigneeName} size={34} /><div><p className="font-semibold text-ink">{item.assigneeName}</p><p className="text-xs text-muted">{item.assigneeEmail}</p></div></div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><dt className="text-muted">Created by</dt><dd className="font-semibold">{item.createdByName}</dd></div><div><dt className="text-muted">Created</dt><dd className="font-semibold">{formatDate(item.createdAt)}</dd></div></dl>
+        </RecordSection>
+        <RecordSection title="Timeline">
+          <form onSubmit={submitComment} className="mb-5 flex flex-col gap-2">
+            <textarea className={`${inputCls} min-h-24 resize-y`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment for the team…" />
+            {(error || eventsError) && <p className="text-xs text-danger">{error || eventsError?.message}</p>}
+            <PrimaryButton type="submit" disabled={busy || !comment.trim()}>{busy ? "Posting…" : "Add Comment"}</PrimaryButton>
+          </form>
+          {!events ? <p className="text-sm text-muted">Loading timeline…</p> : <div className="flex flex-col gap-4">{events.map((entry) => <div key={entry.id} className="flex gap-3">
+            <Avatar name={entry.actorName} size={28} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-semibold">{entry.actorName}</span><span className="text-[11px] text-faint">{relativeTime(entry.createdAt)}</span>{entry.kind === "system" && <span className="rounded bg-tone px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted">System</span>}</div><p className={`mt-1 whitespace-pre-wrap text-sm leading-5 ${entry.kind === "system" ? "text-muted" : "text-ink"}`}>{entry.body}</p></div>
+          </div>)}{events.length === 0 && <p className="text-sm text-muted">No timeline entries yet.</p>}</div>}
+        </RecordSection>
+      </div>
+    </div>
+    {editing && <WorkItemModal item={item} actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} onClose={() => setEditing(false)} />}
+  </main>;
+}

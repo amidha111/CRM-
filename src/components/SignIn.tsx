@@ -1,10 +1,14 @@
-import { signInWithPopup, signOut } from "firebase/auth";
-import { useState } from "react";
+import { sendPasswordResetEmail, signInWithEmailAndPassword, signInWithPopup, signOut } from "firebase/auth";
+import { useState, type FormEvent } from "react";
 import { auth, googleProvider } from "../firebase";
+import { inputCls } from "./ui";
 
 export function SignIn({ denied }: { denied: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   async function handleSignIn() {
     setBusy(true);
@@ -16,6 +20,25 @@ export function SignIn({ denied }: { denied: boolean }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handlePasswordSignIn(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setError(null); setMessage(null);
+    try { await signInWithEmailAndPassword(auth, email.trim(), password); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Sign-in failed"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleReset() {
+    if (!email.trim()) return setError("Enter your email address first.");
+    setBusy(true); setError(null); setMessage(null);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setMessage("Password reset email sent. Use its link to set a new password.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to send the reset email.");
+    } finally { setBusy(false); }
   }
 
   return (
@@ -38,6 +61,7 @@ export function SignIn({ denied }: { denied: boolean }) {
         {error && (
           <div className="mt-5 rounded-md bg-danger-soft px-4 py-3 text-sm text-danger">{error}</div>
         )}
+        {message && <div className="mt-5 rounded-md bg-success-soft px-4 py-3 text-sm text-success">{message}</div>}
 
         {!denied && (
           <button
@@ -54,6 +78,16 @@ export function SignIn({ denied }: { denied: boolean }) {
             {busy ? "Signing in…" : "Continue with Google"}
           </button>
         )}
+
+        {!denied && <>
+          <div className="my-5 flex items-center gap-3 text-xs text-faint"><span className="h-px flex-1 bg-line" />OR USE EMAIL<span className="h-px flex-1 bg-line" /></div>
+          <form onSubmit={handlePasswordSignIn} className="flex flex-col gap-3 text-left">
+            <input className={inputCls} type="email" autoComplete="email" placeholder="Email address" value={email} onChange={(event) => setEmail(event.target.value)} />
+            <input className={inputCls} type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <button type="submit" disabled={busy || !email.trim() || !password} className="primary-gradient w-full disabled:opacity-50">{busy ? "Please wait…" : "Sign in with Email"}</button>
+            <button type="button" onClick={handleReset} disabled={busy} className="self-center text-xs font-semibold text-gold-deep hover:underline">Forgot password? Send reset email</button>
+          </form>
+        </>}
 
         <p className="mt-6 text-xs text-muted">Private workspace. Access is limited to invited accounts.</p>
       </div>

@@ -13,7 +13,17 @@ service cloud.firestore {
         && request.auth.token.email == 'amidha111@gmail.com';
     }
 
-    function isAllowed() {
+    function isWorkItemsOnlyUser() {
+      return isSignedInVerified()
+        && request.auth.token.email == 'rahul@klego.ai';
+    }
+
+    function isPlanClarityOnlyUser() {
+      return isSignedInVerified()
+        && request.auth.token.email == 'lewandowskiannm@gmail.com';
+    }
+
+    function isAllowedUser() {
       return isAdmin()
         || (
           isSignedInVerified()
@@ -21,21 +31,50 @@ service cloud.firestore {
         );
     }
 
+    function hasFullAccess() {
+      return isAllowedUser()
+        && !isWorkItemsOnlyUser()
+        && !isPlanClarityOnlyUser();
+    }
+
+    function hasWorkItemsAccess() {
+      return isAllowedUser() || isWorkItemsOnlyUser();
+    }
+
     match /opportunities/{oppId} {
-      allow read, create, update, delete: if isAllowed();
+      allow read, create, update, delete: if hasFullAccess();
     }
 
     match /activities/{activityId} {
-      allow read, create, delete: if isAllowed(); // delete only for record cascade
+      allow read, create, delete: if hasFullAccess(); // delete only for record cascade
       allow update: if false;                     // entries are never edited
     }
 
     match /contacts/{contactId} {
-      allow read, create, update, delete: if isAllowed();
+      allow read, create, update, delete: if hasFullAccess();
     }
 
     match /accounts/{accountId} {
-      allow read, create, update, delete: if isAllowed();
+      allow read, create, update, delete: if hasFullAccess();
+    }
+
+    match /workItems/{workItemId} {
+      allow read: if hasWorkItemsAccess()
+        && (!isPlanClarityOnlyUser() || resource.data.product == 'plan_clarity');
+      allow create: if hasWorkItemsAccess()
+        && (!isPlanClarityOnlyUser() || request.resource.data.product == 'plan_clarity');
+      allow update: if hasWorkItemsAccess()
+        && (!isPlanClarityOnlyUser()
+          || (resource.data.product == 'plan_clarity'
+            && request.resource.data.product == 'plan_clarity'));
+      allow delete: if isAdmin();
+
+      match /events/{eventId} {
+        allow read, create: if hasWorkItemsAccess()
+          && (!isPlanClarityOnlyUser()
+            || getAfter(/databases/$(database)/documents/workItems/$(workItemId)).data.product == 'plan_clarity');
+        allow update, delete: if false;
+      }
     }
 
     match /allowedUsers/{email} {

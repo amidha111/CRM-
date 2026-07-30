@@ -1,13 +1,42 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 
 initializeApp();
 const db = getFirestore();
+const adminAuth = getAuth();
 
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
+const RAHUL_EMAIL = "rahul@klego.ai";
+const ANNE_EMAIL = "lewandowskiannm@gmail.com";
+
+export const prepareRahulPasswordUser = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const token = request.auth?.token;
+    const callerEmail = typeof token?.email === "string" ? token.email.toLowerCase() : "";
+    if (!token?.email_verified || callerEmail !== ADMIN_EMAIL) {
+      throw new HttpsError("permission-denied", "Only the CRM owner can prepare password access.");
+    }
+    try {
+      const existing = await adminAuth.getUserByEmail(RAHUL_EMAIL);
+      if (!existing.emailVerified) await adminAuth.updateUser(existing.uid, { emailVerified: true });
+      return { email: RAHUL_EMAIL, created: false };
+    } catch (reason) {
+      if (reason?.code !== "auth/user-not-found") throw reason;
+      await adminAuth.createUser({
+        email: RAHUL_EMAIL,
+        emailVerified: true,
+        password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
+        displayName: "Rahul",
+      });
+      return { email: RAHUL_EMAIL, created: true };
+    }
+  },
+);
 
 async function assertAllowed(request) {
   const token = request.auth?.token;
@@ -16,6 +45,9 @@ async function assertAllowed(request) {
     throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
   }
   if (email === ADMIN_EMAIL) return;
+  if (email === ANNE_EMAIL || email === RAHUL_EMAIL) {
+    throw new HttpsError("permission-denied", "This account only has access to Work Items.");
+  }
   const allowed = await db.doc(`allowedUsers/${email}`).get();
   if (!allowed.exists) {
     throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");

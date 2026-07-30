@@ -2,10 +2,11 @@ import { useState } from "react";
 import { Avatar } from "./ui";
 import { PIcon, type IconName } from "./icons";
 
-export type Page = "opportunities" | "accounts" | "contacts" | "activity" | "dashboard" | "settings";
+export type Page = "opportunities" | "accounts" | "contacts" | "activity" | "dashboard" | "workItems" | "settings";
 
 const NAV: { key: Page; label: string; icon: IconName }[] = [
   { key: "dashboard", label: "Dashboard", icon: "chart" },
+  { key: "workItems", label: "Work Items", icon: "note" },
   { key: "opportunities", label: "Opportunities", icon: "target" },
   { key: "accounts", label: "Accounts", icon: "briefcase" },
   { key: "contacts", label: "Contacts", icon: "users" },
@@ -18,11 +19,13 @@ export function Sidebar({
   onNavigate,
   userName,
   onSignOut,
+  workItemsOnly = false,
 }: {
   page: Page;
   onNavigate: (p: Page) => void;
   userName: string;
   onSignOut: () => void;
+  workItemsOnly?: boolean;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -33,11 +36,11 @@ export function Sidebar({
           <span className="brand-mark">P</span>
           <span className="text-[15.5px] font-bold tracking-[-0.01em]">Plan Clarity</span>
           <span className="h-[22px] w-px bg-white/15" />
-          <span className="font-mono text-[10px] tracking-[0.2em] text-gold-bright/80">SALES</span>
+          <span className="font-mono text-[10px] tracking-[0.2em] text-gold-bright/80">{workItemsOnly ? "DELIVERY" : "SALES"}</span>
         </div>
         <div className="global-search">
           <PIcon name="search" size={15} />
-          <span className="truncate">Search opportunities, accounts, contacts...</span>
+          <span className="truncate">{workItemsOnly ? "Search work items..." : "Search opportunities, accounts, contacts..."}</span>
           <span className="ml-auto rounded border border-white/15 px-1.5 py-px font-mono text-[10px] text-white/40">⌘K</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -74,7 +77,7 @@ export function Sidebar({
                   <p className="font-mono text-[10px] uppercase tracking-wide text-muted">Signed in</p>
                   <p className="truncate text-sm font-semibold">{userName}</p>
                 </div>
-                <button
+                {!workItemsOnly && <button
                   type="button"
                   onClick={() => {
                     setUserMenuOpen(false);
@@ -85,7 +88,7 @@ export function Sidebar({
                 >
                   <PIcon name="sliders" size={15} />
                   Settings
-                </button>
+                </button>}
                 <button
                   type="button"
                   onClick={onSignOut}
@@ -101,7 +104,7 @@ export function Sidebar({
         </div>
       </div>
       <nav className="object-tabs">
-        {NAV.map((item) => {
+        {NAV.filter((item) => !workItemsOnly || item.key === "workItems").map((item) => {
           const active = item.key === page;
           return (
             <button

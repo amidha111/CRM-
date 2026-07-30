@@ -162,6 +162,78 @@ export interface AllowedUser {
   updatedAt: Date;
 }
 
+export type WorkItemType = "bug" | "feature";
+export type WorkItemProduct = "klego" | "plan_clarity";
+export type WorkItemPriority = "low" | "medium" | "high";
+export type WorkItemStatus = "open" | "in_progress" | "ready_for_review" | "closed";
+
+export const WORK_ITEM_TYPE_LABELS: Record<WorkItemType, string> = {
+  bug: "Bug",
+  feature: "Feature",
+};
+
+export const WORK_ITEM_PRODUCT_LABELS: Record<WorkItemProduct, string> = {
+  klego: "Klego",
+  plan_clarity: "Plan Clarity",
+};
+
+export const WORK_ITEM_PRIORITY_LABELS: Record<WorkItemPriority, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+};
+
+export const WORK_ITEM_STATUS_LABELS: Record<WorkItemStatus, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  ready_for_review: "Ready for Review",
+  closed: "Closed",
+};
+
+export type WorkItemContentBlock =
+  | { id: string; type: "text"; text: string }
+  | { id: string; type: "image"; storagePath: string; name: string };
+
+export interface WorkItem {
+  id: string;
+  type: WorkItemType;
+  product: WorkItemProduct;
+  subject: string;
+  content: WorkItemContentBlock[];
+  videoUrl: string | null;
+  priority: WorkItemPriority;
+  status: WorkItemStatus;
+  assigneeEmail: string;
+  assigneeName: string;
+  createdByEmail: string;
+  createdByName: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type WorkItemEventKind = "comment" | "system";
+
+export interface WorkItemEvent {
+  id: string;
+  kind: WorkItemEventKind;
+  body: string;
+  actorEmail: string;
+  actorName: string;
+  createdAt: Date;
+}
+
+export interface WorkItemInput {
+  type: WorkItemType;
+  product: WorkItemProduct;
+  subject: string;
+  content: WorkItemContentBlock[];
+  videoUrl: string | null;
+  priority: WorkItemPriority;
+  status: WorkItemStatus;
+  assigneeEmail: string;
+  assigneeName: string;
+}
+
 /** Input shapes for write operations */
 
 /** Link an existing account or create one inline (SF-style lookup). */

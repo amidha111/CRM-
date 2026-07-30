@@ -15,6 +15,9 @@ import { SettingsPage } from "./pages/Settings";
 import { OpportunityRecordPage } from "./pages/OpportunityRecord";
 import { AccountRecordPage } from "./pages/AccountRecord";
 import { ContactRecordPage } from "./pages/ContactRecord";
+import { WorkItemsPage } from "./pages/WorkItems";
+import { WorkItemRecordPage } from "./pages/WorkItemRecord";
+import { useWorkItems } from "./lib/workItemHooks";
 
 function isPermissionDenied(e: Error | null): boolean {
   return !!e && /permission|insufficient/i.test(e.message);
@@ -28,13 +31,17 @@ const RECORD_HOME: Record<RecordRef["type"], Page> = {
   contact: "contacts",
 };
 
-function Workspace({ user }: { user: { name: string; email: string; uid: string } }) {
+type WorkspaceUser = { name: string; email: string; uid: string };
+
+function FullWorkspace({ user }: { user: WorkspaceUser }) {
   const [page, setPage] = useState<Page>("dashboard");
   const [record, setRecord] = useState<RecordRef | null>(null);
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
   const { contacts } = useContacts();
   const { accounts } = useAccounts();
+  const { items: workItems, error: workItemsError } = useWorkItems();
+  const [workItemId, setWorkItemId] = useState<string | null>(null);
 
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
 
@@ -44,11 +51,11 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
     return [...names];
   }, [opps, user.name]);
 
-  if (isPermissionDenied(oppError)) {
+  if (isPermissionDenied(oppError) || isPermissionDenied(workItemsError)) {
     return <SignIn denied />;
   }
 
-  if (!opps || !activities || !contacts || !accounts) {
+  if (!opps || !activities || !contacts || !accounts || !workItems) {
     return (
       <div className="dot-grid flex min-h-screen items-center justify-center">
         <p className="text-muted">Loading workspace…</p>
@@ -59,6 +66,7 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
   function navigate(p: Page) {
     setPage(p);
     setRecord(null);
+    setWorkItemId(null);
   }
 
   const openRecord: OpenRecord = (type, id) => {
@@ -116,11 +124,13 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
   }
 
   const recordView = record ? renderRecord(record) : null;
+  const workItem = workItemId ? workItems.find((item) => item.id === workItemId) : null;
+  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} onBack={() => setWorkItemId(null)} /> : null;
 
   return (
     <div className="dot-grid flex h-screen flex-col overflow-hidden">
       <Sidebar page={page} onNavigate={navigate} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} />
-      {recordView ?? (
+      {recordView ?? workItemView ?? (
         <>
           {page === "opportunities" && (
             <OpportunitiesPage
@@ -144,11 +154,28 @@ function Workspace({ user }: { user: { name: string; email: string; uid: string 
           {page === "dashboard" && (
             <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
           )}
+          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} onOpen={setWorkItemId} />}
           {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} userUid={user.uid} />}
         </>
       )}
     </div>
   );
+}
+
+function WorkItemsOnlyWorkspace({ user, planClarityOnly = false }: { user: WorkspaceUser; planClarityOnly?: boolean }) {
+  const allowedProducts = planClarityOnly ? (["plan_clarity"] as const) : (["klego", "plan_clarity"] as const);
+  const { items, error } = useWorkItems(planClarityOnly ? "plan_clarity" : undefined);
+  const [workItemId, setWorkItemId] = useState<string | null>(null);
+  const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
+  if (isPermissionDenied(error)) return <SignIn denied />;
+  if (!items) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading work items…</p></div>;
+  const item = workItemId ? items.find((candidate) => candidate.id === workItemId) : null;
+  return <div className="dot-grid flex h-screen flex-col overflow-hidden">
+    <Sidebar page="workItems" onNavigate={() => setWorkItemId(null)} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
+    {item
+      ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onBack={() => setWorkItemId(null)} />
+      : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onOpen={setWorkItemId} />}
+  </div>;
 }
 
 export default function App() {
@@ -160,7 +187,7 @@ export default function App() {
   }, []);
 
   if (DEMO) {
-    return <Workspace user={{ name: "Amit", email: "demo@planclarity.local", uid: "demo" }} />;
+    return <FullWorkspace user={{ name: "Amit", email: "demo@planclarity.local", uid: "demo" }} />;
   }
 
   if (user === "loading") {
@@ -175,13 +202,9 @@ export default function App() {
     return <SignIn denied={false} />;
   }
 
-  return (
-    <Workspace
-      user={{
-        name: user.displayName ?? user.email ?? "User",
-        email: user.email ?? "",
-        uid: user.uid,
-      }}
-    />
-  );
+  const workspaceUser = { name: user.displayName ?? user.email ?? "User", email: user.email ?? "", uid: user.uid };
+  const normalizedEmail = workspaceUser.email.trim().toLowerCase();
+  if (normalizedEmail === "rahul@klego.ai") return <WorkItemsOnlyWorkspace user={workspaceUser} />;
+  if (normalizedEmail === "lewandowskiannm@gmail.com") return <WorkItemsOnlyWorkspace user={workspaceUser} planClarityOnly />;
+  return <FullWorkspace user={workspaceUser} />;
 }
