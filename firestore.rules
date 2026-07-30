@@ -40,21 +40,37 @@ service cloud.firestore {
       return isAllowedUser() || isWorkItemsOnlyUser();
     }
 
+    function createsWithoutRecordNumber() {
+      return !request.resource.data.keys().hasAny(['sequenceNumber', 'referenceId']);
+    }
+
+    function preservesRecordNumber() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['sequenceNumber', 'referenceId']);
+    }
+
     match /opportunities/{oppId} {
-      allow read, create, update, delete: if hasFullAccess();
+      allow read, delete: if hasFullAccess();
+      allow create: if hasFullAccess() && createsWithoutRecordNumber();
+      allow update: if hasFullAccess() && preservesRecordNumber();
     }
 
     match /activities/{activityId} {
-      allow read, create, delete: if hasFullAccess(); // delete only for record cascade
+      allow read, delete: if hasFullAccess(); // delete only for record cascade
+      allow create: if hasFullAccess() && createsWithoutRecordNumber();
       allow update: if false;                     // entries are never edited
     }
 
     match /contacts/{contactId} {
-      allow read, create, update, delete: if hasFullAccess();
+      allow read, delete: if hasFullAccess();
+      allow create: if hasFullAccess() && createsWithoutRecordNumber();
+      allow update: if hasFullAccess() && preservesRecordNumber();
     }
 
     match /accounts/{accountId} {
-      allow read, create, update, delete: if hasFullAccess();
+      allow read, delete: if hasFullAccess();
+      allow create: if hasFullAccess() && createsWithoutRecordNumber();
+      allow update: if hasFullAccess() && preservesRecordNumber();
     }
 
     match /workItems/{workItemId} {

@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
 
 initializeApp();
@@ -106,6 +107,48 @@ function workItemContent(value, workItemId) {
 function formatWorkItemReference(sequenceNumber) {
   return `WI-${String(sequenceNumber).padStart(4, "0")}`;
 }
+
+function formatRecordReference(prefix, sequenceNumber) {
+  return `${prefix}-${String(sequenceNumber).padStart(4, "0")}`;
+}
+
+function numberNewRecords(collectionName, prefix) {
+  return onDocumentCreated(
+    { document: `${collectionName}/{recordId}`, region: "us-central1" },
+    async (event) => {
+      const created = event.data;
+      if (!created) return;
+      const recordRef = created.ref;
+      const counterRef = db.doc(`systemCounters/${collectionName}`);
+      await db.runTransaction(async (transaction) => {
+        const [record, counter] = await Promise.all([
+          transaction.get(recordRef),
+          transaction.get(counterRef),
+        ]);
+        if (!record.exists || record.get("referenceId")) return;
+        const previous = counter.exists ? counter.get("lastNumber") : 0;
+        if (!Number.isSafeInteger(previous) || previous < 0) {
+          throw new Error(`The ${collectionName} number counter is invalid.`);
+        }
+        const sequenceNumber = previous + 1;
+        transaction.set(
+          counterRef,
+          { lastNumber: sequenceNumber, updatedAt: FieldValue.serverTimestamp() },
+          { merge: true },
+        );
+        transaction.update(recordRef, {
+          sequenceNumber,
+          referenceId: formatRecordReference(prefix, sequenceNumber),
+        });
+      });
+    },
+  );
+}
+
+export const numberOpportunityRecords = numberNewRecords("opportunities", "OPP");
+export const numberAccountRecords = numberNewRecords("accounts", "ACC");
+export const numberContactRecords = numberNewRecords("contacts", "CON");
+export const numberActivityRecords = numberNewRecords("activities", "ACT");
 
 export const createWorkItemRecord = onCall(
   { region: "us-central1" },

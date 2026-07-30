@@ -64,6 +64,8 @@ function snapToOpp(snap: DocumentSnapshot): Opportunity {
   const d = snap.data({ serverTimestamps: "estimate" })!;
   return {
     id: snap.id,
+    sequenceNumber: d.sequenceNumber ?? 0,
+    referenceId: d.referenceId ?? "",
     name: d.name,
     accountId: d.accountId ?? null,
     account: d.accountName ?? d.account ?? "", // legacy docs stored a plain `account` string
@@ -90,6 +92,8 @@ function snapToActivity(snap: DocumentSnapshot): Activity {
   const d = snap.data({ serverTimestamps: "estimate" })!;
   return {
     id: snap.id,
+    sequenceNumber: d.sequenceNumber ?? 0,
+    referenceId: d.referenceId ?? "",
     oppId: d.oppId,
     oppName: d.oppName,
     account: d.account,
@@ -113,6 +117,8 @@ function snapToContact(snap: DocumentSnapshot): Contact {
   const lastName = d.lastName ?? fallback.lastName;
   return {
     id: snap.id,
+    sequenceNumber: d.sequenceNumber ?? 0,
+    referenceId: d.referenceId ?? "",
     firstName,
     lastName,
     name: d.name ?? contactDisplayName(firstName, lastName),
@@ -132,6 +138,8 @@ function snapToAccount(snap: DocumentSnapshot): Account {
   const d = snap.data({ serverTimestamps: "estimate" })!;
   return {
     id: snap.id,
+    sequenceNumber: d.sequenceNumber ?? 0,
+    referenceId: d.referenceId ?? "",
     name: d.name,
     industry: d.industry ?? null,
     website: d.website ?? null,

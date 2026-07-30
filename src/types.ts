@@ -65,6 +65,8 @@ export interface NextAction {
 
 export interface Account {
   id: string;
+  sequenceNumber: number;
+  referenceId: string;
   name: string;
   industry: string | null;
   website: string | null;
@@ -76,6 +78,8 @@ export interface Account {
 
 export interface Opportunity {
   id: string;
+  sequenceNumber: number;
+  referenceId: string;
   name: string;
   accountId: string | null; // null on legacy docs and account-less quick deals
   account: string; // denormalized account name ("" when none)
@@ -118,6 +122,8 @@ export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
 
 export interface Activity {
   id: string;
+  sequenceNumber: number;
+  referenceId: string;
   oppId: string;
   oppName: string;
   account: string;
@@ -135,6 +141,8 @@ export interface Activity {
 
 export interface Contact {
   id: string;
+  sequenceNumber: number;
+  referenceId: string;
   firstName: string;
   lastName: string;
   name: string;

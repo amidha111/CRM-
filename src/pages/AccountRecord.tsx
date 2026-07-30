@@ -60,6 +60,7 @@ export function AccountRecordPage({
         <RecordHeader
           icon="▣"
           entity="Account"
+          reference={account.referenceId}
           title={account.name}
           actions={
             <>

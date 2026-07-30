@@ -138,6 +138,7 @@ export function OpportunityRecordPage({
         <RecordHeader
           icon="◎"
           entity="Opportunity"
+          reference={opp.referenceId}
           title={opp.name}
           actions={
             <>
@@ -275,7 +276,7 @@ export function OpportunityRecordPage({
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-semibold text-ink">{a.detail}</span>
                       <span className="ml-auto whitespace-nowrap font-mono text-[10.5px] text-faint">
-                        {a.actor} · {relativeTime(a.createdAt)}
+                        {a.referenceId} · {a.actor} · {relativeTime(a.createdAt)}
                       </span>
                     </div>
                     {a.note && <p className="mt-2 rounded-lg border border-line-soft bg-tone px-3 py-2 text-xs leading-relaxed text-muted">{a.note}</p>}

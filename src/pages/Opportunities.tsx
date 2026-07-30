@@ -32,7 +32,7 @@ export function OpportunitiesPage({
     return opps.filter((o) => {
       if (stageFilter === "open" && !OPEN_STAGES.includes(o.stage)) return false;
       if (stageFilter !== "all" && stageFilter !== "open" && o.stage !== stageFilter) return false;
-      if (q && !`${o.name} ${o.account} ${o.contactRoles.map((r) => r.name).join(" ")}`.toLowerCase().includes(q))
+      if (q && !`${o.referenceId} ${o.name} ${o.account} ${o.contactRoles.map((r) => r.name).join(" ")}`.toLowerCase().includes(q))
         return false;
       return true;
     });
@@ -176,6 +176,7 @@ export function OpportunitiesPage({
                       </td>
                       <td className="px-5 py-4">
                         <span className="font-semibold text-gold-deep hover:underline">{o.name}</span>
+                        <span className="block font-mono text-[10px] text-faint">{o.referenceId || "Assigning ID…"}</span>
                       </td>
                       <td className="px-3 py-4 text-muted">
                         <span className="inline-flex items-center gap-2">

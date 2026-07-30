@@ -7,10 +7,10 @@ export type OpenRecord = (type: "opportunity" | "account" | "contact", id: strin
 export function Breadcrumb({ list, onBack, current }: { list: string; onBack: () => void; current: string }) {
   return (
     <nav className="flex items-center gap-2 text-[12.5px] text-muted">
-      <button onClick={onBack} className="flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-muted hover:text-ink">
+      <button data-preview-allow onClick={onBack} className="flex h-7 w-7 items-center justify-center rounded-md border border-line bg-paper text-muted hover:text-ink">
         <PIcon name="arrowLeft" size={14} />
       </button>
-      <button onClick={onBack} className="hover:text-ink">
+      <button data-preview-allow onClick={onBack} className="hover:text-ink">
         {list}
       </button>
       <span className="text-faint">/</span>
@@ -97,7 +97,7 @@ export function RecordSection({
 
 export function RecordLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <button onClick={onClick} className="font-semibold text-gold-deep hover:underline">
+    <button data-preview-allow onClick={onClick} className="font-semibold text-gold-deep hover:underline">
       {children}
     </button>
   );

@@ -96,6 +96,7 @@ export function ActivityLogPage({
                           {t.icon}
                         </span>
                         <div className="min-w-0 flex-1">
+                          <p className="mb-1 font-mono text-[10px] font-semibold text-faint">{a.referenceId || "Assigning ID…"}</p>
                           <p className="text-sm text-ink">
                             <span className="font-semibold">{a.actor}</span> — {a.detail} ·{" "}
                             <button

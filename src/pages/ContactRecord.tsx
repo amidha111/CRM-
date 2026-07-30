@@ -43,6 +43,7 @@ export function ContactRecordPage({
         <RecordHeader
           icon="◉"
           entity="Contact"
+          reference={contact.referenceId}
           title={contact.name}
           actions={
             <>
@@ -124,7 +125,7 @@ export function ContactRecordPage({
                   </p>
                   {a.note && <p className="mt-0.5 text-xs italic text-muted">"{a.note}"</p>}
                   <p className="text-xs text-muted">
-                    {a.actor} · {relativeTime(a.createdAt)}
+                    {a.referenceId} · {a.actor} · {relativeTime(a.createdAt)}
                   </p>
                 </div>
               ))}

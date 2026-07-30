@@ -172,6 +172,7 @@ export function Sidebar({
           const active = item.key === page;
           return (
             <button
+              data-preview-allow
               key={item.key}
               draggable={!workItemsOnly}
               onClick={() => onNavigate(item.key)}

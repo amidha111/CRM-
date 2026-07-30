@@ -28,6 +28,10 @@ const id = (p: string) => `${p}_${seq++}`;
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000);
 const daysAhead = (n: number) => new Date(Date.now() + n * 86_400_000);
 
+function demoIdentity(prefix: string, sequenceNumber: number) {
+  return { sequenceNumber, referenceId: `${prefix}-${String(sequenceNumber).padStart(4, "0")}` };
+}
+
 function splitContactName(name: string): { firstName: string; lastName: string } {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length <= 1) return { firstName: parts[0] ?? "", lastName: "" };
@@ -38,23 +42,23 @@ function contactDisplayName(firstName: string, lastName: string): string {
   return [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
 }
 
-const accounts: Account[] = [
+const accounts = [
   { id: "a_acme", name: "Acme Corp", industry: "Manufacturing", website: "acme.com", phone: null, notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
   { id: "a_globex", name: "Globex Ltd", industry: "Technology", website: "globex.com", phone: null, notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
   { id: "a_soylent", name: "Soylent Corp", industry: "Consumer Goods", website: null, phone: null, notes: "", createdAt: daysAgo(50), updatedAt: daysAgo(6) },
   { id: "a_initech", name: "Initech", industry: "Financial Services", website: null, phone: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
   { id: "a_hooli", name: "Hooli", industry: "Technology", website: "hooli.com", phone: null, notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
-];
+].map((record, index) => ({ ...record, ...demoIdentity("ACC", index + 1) })) as Account[];
 
-const contacts: Contact[] = [
+const contacts = [
   { id: "c_priya", firstName: "Priya", lastName: "Shah", name: "Priya Shah", accountId: "a_acme", accountName: "Acme Corp", title: "CFO", email: "priya@acme.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/priyashah", notes: "", createdAt: daysAgo(40), updatedAt: daysAgo(2) },
   { id: "c_jane", firstName: "Jane", lastName: "Doe", name: "Jane Doe", accountId: "a_acme", accountName: "Acme Corp", title: "VP Engineering", email: "jane@acme.com", phone: null, linkedinUrl: null, notes: "", createdAt: daysAgo(38), updatedAt: daysAgo(5) },
   { id: "c_tom", firstName: "Tom", lastName: "Berenger", name: "Tom Berenger", accountId: "a_globex", accountName: "Globex Ltd", title: "CTO", email: "tom@globex.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/tomberenger", notes: "", createdAt: daysAgo(30), updatedAt: daysAgo(1) },
   { id: "c_amara", firstName: "Amara", lastName: "Okafor", name: "Amara Okafor", accountId: "a_initech", accountName: "Initech", title: "Board member", email: null, phone: null, linkedinUrl: null, notes: "", createdAt: daysAgo(25), updatedAt: daysAgo(3) },
   { id: "c_dev", firstName: "Dev", lastName: "Patel", name: "Dev Patel", accountId: "a_hooli", accountName: "Hooli", title: "Head of Data", email: "dev@hooli.com", phone: null, linkedinUrl: "https://www.linkedin.com/in/devpatel", notes: "", createdAt: daysAgo(12), updatedAt: daysAgo(12) },
-];
+].map((record, index) => ({ ...record, ...demoIdentity("CON", index + 1) })) as Contact[];
 
-const opportunities: Opportunity[] = [
+const opportunities = [
   {
     id: "o_acme", name: "Enterprise Expansion", accountId: "a_acme", account: "Acme Corp", owner: "Amit", amount: 120000,
     stage: "proposal", closeDate: daysAhead(20), notes: "Q3 budget confirmed.",
@@ -101,9 +105,9 @@ const opportunities: Opportunity[] = [
     contactIds: ["c_dev"],
     createdAt: daysAgo(12), updatedAt: daysAgo(16),
   },
-];
+].map((record, index) => ({ ...record, ...demoIdentity("OPP", index + 1) })) as Opportunity[];
 
-const activities: Activity[] = [
+const activities = [
   {
     id: id("a"), oppId: "o_acme", oppName: "Enterprise Expansion", account: "Acme Corp",
     type: "stage_change", detail: "Moved from Discovery to Proposal", note: null, link: null,
@@ -134,7 +138,12 @@ const activities: Activity[] = [
     fromStage: null, toStage: null, contactId: null, actor: "Linisha", actorUid: "demo",
     createdAt: daysAgo(12),
   },
-];
+].map((record, index) => ({ ...record, ...demoIdentity("ACT", index + 1) })) as Activity[];
+
+let accountNumber = accounts.length;
+let contactNumber = contacts.length;
+let opportunityNumber = opportunities.length;
+let activityNumber = activities.length;
 
 type Listener<T> = (v: T[]) => void;
 const oppListeners = new Set<Listener<Opportunity>>();
@@ -183,6 +192,7 @@ function pushActivity(
 ) {
   activities.push({
     id: id("a"),
+    ...demoIdentity("ACT", ++activityNumber),
     oppId: opp.id,
     oppName: opp.name,
     account: opp.account,
@@ -203,7 +213,7 @@ function resolveAccount(input: AccountRefInput): { accountId: string; accountNam
   if (input.accountId) return { accountId: input.accountId, accountName: input.name };
   const aid = id("a");
   accounts.push({
-    id: aid, name: input.name, industry: null, website: null, phone: null, notes: "",
+    id: aid, ...demoIdentity("ACC", ++accountNumber), name: input.name, industry: null, website: null, phone: null, notes: "",
     createdAt: new Date(), updatedAt: new Date(),
   });
   return { accountId: aid, accountName: input.name };
@@ -215,6 +225,7 @@ function resolveContact(input: StakeholderInput, account: { accountId: string | 
   const split = splitContactName(input.name);
   contacts.push({
     id: cid,
+    ...demoIdentity("CON", ++contactNumber),
     firstName: split.firstName,
     lastName: split.lastName,
     name: input.name,
@@ -247,6 +258,7 @@ export async function createOpportunity(input: NewOpportunityInput, actor: Actor
   const oppId = id("o");
   opportunities.push({
     id: oppId,
+    ...demoIdentity("OPP", ++opportunityNumber),
     name: input.name,
     accountId: account.accountId,
     account: account.accountName,
@@ -354,7 +366,7 @@ export async function removeStakeholder(opp: Opportunity, contactId: string, act
 export async function createAccount(input: NewAccountInput): Promise<string> {
   const aid = id("a");
   accounts.push({
-    id: aid, name: input.name, industry: input.industry || null, website: input.website || null,
+    id: aid, ...demoIdentity("ACC", ++accountNumber), name: input.name, industry: input.industry || null, website: input.website || null,
     phone: input.phone || null, notes: "", createdAt: new Date(), updatedAt: new Date(),
   });
   emit();
@@ -366,7 +378,7 @@ export async function createContact(input: NewContactInput): Promise<string> {
   const cid = id("c");
   const name = input.name || contactDisplayName(input.firstName, input.lastName);
   contacts.push({
-    id: cid, firstName: input.firstName, lastName: input.lastName, name, accountId: account?.accountId ?? null, accountName: account?.accountName ?? "",
+    id: cid, ...demoIdentity("CON", ++contactNumber), firstName: input.firstName, lastName: input.lastName, name, accountId: account?.accountId ?? null, accountName: account?.accountName ?? "",
     title: input.title || null, email: input.email || null, phone: input.phone || null, linkedinUrl: input.linkedinUrl || null, notes: "",
     createdAt: new Date(), updatedAt: new Date(),
   });

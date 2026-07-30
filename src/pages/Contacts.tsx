@@ -36,7 +36,7 @@ export function ContactsPage({
       if (contactFilter === "unassigned" && c.accountId) return false;
       if (
         q &&
-        !`${c.firstName} ${c.lastName} ${c.name} ${c.accountName} ${c.title ?? ""} ${c.email ?? ""}`
+        !`${c.referenceId} ${c.firstName} ${c.lastName} ${c.name} ${c.accountName} ${c.title ?? ""} ${c.email ?? ""}`
           .concat(` ${c.linkedinUrl ?? ""}`)
           .toLowerCase()
           .includes(q)
@@ -145,7 +145,10 @@ export function ContactsPage({
                 <td className="px-5 py-4">
                   <span className="flex items-center gap-2.5">
                     <Avatar name={c.name} size={28} />
-                    <span className="font-semibold text-gold-deep hover:underline">{c.name}</span>
+                    <span>
+                      <span className="block font-semibold text-gold-deep hover:underline">{c.name}</span>
+                      <span className="block font-mono text-[10px] text-faint">{c.referenceId || "Assigning ID…"}</span>
+                    </span>
                   </span>
                 </td>
                 <td className="px-3 py-4 text-muted">{c.accountName || "—"}</td>

@@ -51,7 +51,7 @@ export function AccountsPage({
       const r = rollups.get(a.id);
       if (accountFilter === "open" && !(r?.openDeals ?? 0)) return false;
       if (accountFilter === "empty" && ((r?.openDeals ?? 0) || (r?.contacts ?? 0))) return false;
-      if (q && !`${a.name} ${a.industry ?? ""}`.toLowerCase().includes(q)) return false;
+      if (q && !`${a.referenceId} ${a.name} ${a.industry ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [accounts, accountFilter, rollups, search]);
@@ -165,7 +165,10 @@ export function AccountsPage({
                   <td className="px-5 py-4">
                     <span className="flex items-center gap-2.5">
                       <Avatar name={a.name} size={28} />
-                      <span className="font-semibold text-gold-deep hover:underline">{a.name}</span>
+                      <span>
+                        <span className="block font-semibold text-gold-deep hover:underline">{a.name}</span>
+                        <span className="block font-mono text-[10px] text-faint">{a.referenceId || "Assigning ID…"}</span>
+                      </span>
                     </span>
                   </td>
                   <td className="px-3 py-4 text-muted">{a.industry ?? "—"}</td>

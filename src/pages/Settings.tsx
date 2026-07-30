@@ -14,10 +14,12 @@ export function SettingsPage({
   userName,
   userEmail,
   userUid,
+  onLoginAs,
 }: {
   userName: string;
   userEmail: string;
   userUid: string;
+  onLoginAs?: (user: { name: string; email: string }) => void;
 }) {
   const admin = isWorkspaceAdmin(userEmail);
   const { allowedUsers, error: usersError } = useAllowedUsers(admin);
@@ -124,8 +126,8 @@ export function SettingsPage({
                 <div className="divide-y divide-line-soft bg-paper">
                   <div className="flex items-center justify-between gap-3 px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-ink">amidha111@gmail.com</p>
-                      <p className="text-xs text-muted">Owner · cannot be removed</p>
+                      <p className="text-sm font-semibold text-ink">Amit Midha</p>
+                      <p className="text-xs text-muted">amidha111@gmail.com · Owner · cannot be removed</p>
                     </div>
                     <span className="rounded-md border border-gold/40 bg-gold-soft px-2 py-1 text-xs font-semibold text-gold-deep">
                       Admin
@@ -133,11 +135,12 @@ export function SettingsPage({
                   </div>
                   <div className="flex items-center justify-between gap-3 px-4 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-ink">rahul@klego.ai</p>
-                      <p className="text-xs text-muted">Work Items only · cannot view sales CRM records</p>
+                      <p className="text-sm font-semibold text-ink">Rahul Panchal</p>
+                      <p className="text-xs text-muted">rahul@klego.ai · Work Items only · cannot view sales CRM records</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="rounded-md border border-line bg-tone px-2 py-1 text-xs font-semibold text-muted">Both products · Work Items only</span>
+                      <button type="button" onClick={() => onLoginAs?.({ name: "Rahul Panchal", email: "rahul@klego.ai" })} className="rounded-md border border-line px-2 py-1 text-xs font-semibold text-ink hover:bg-tone">Login As</button>
                       <button type="button" onClick={handleRahulReset} disabled={busy === "rahul-reset"} className="rounded-md px-2 py-1 text-xs font-semibold text-gold-deep hover:bg-gold-soft disabled:opacity-50">{busy === "rahul-reset" ? "Sending…" : "Send password reset"}</button>
                     </div>
                   </div>
@@ -146,11 +149,21 @@ export function SettingsPage({
                     return (
                     <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-ink">{u.email}</p>
-                        <p className="text-xs text-muted">{anne ? "Full CRM · Plan Clarity Work Items only" : "Full CRM member access"}</p>
+                        <p className="text-sm font-semibold text-ink">{anne ? "Ann Lewandowski" : u.email.split("@")[0] || u.email}</p>
+                        <p className="text-xs text-muted">{u.email} · {anne ? "Full CRM · Plan Clarity Work Items only" : "Full CRM member access"}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         {anne && <span className="rounded-md border border-line bg-tone px-2 py-1 text-xs font-semibold text-muted">Plan Clarity only</span>}
+                        <button
+                          type="button"
+                          onClick={() => onLoginAs?.({
+                            name: anne ? "Ann Lewandowski" : u.email.split("@")[0] || u.email,
+                            email: u.email,
+                          })}
+                          className="rounded-md border border-line px-2 py-1 text-xs font-semibold text-ink hover:bg-tone"
+                        >
+                          Login As
+                        </button>
                         <button
                         type="button"
                         onClick={() => handleRemove(u.email)}
@@ -174,6 +187,7 @@ export function SettingsPage({
             Firebase project <code className="rounded bg-tone px-1 py-0.5 text-xs">founderflow-crm-af1</code>,
             Firestore collections <code className="rounded bg-tone px-1 py-0.5 text-xs">opportunities</code>,{" "}
             <code className="rounded bg-tone px-1 py-0.5 text-xs">activities</code> (append-only),{" "}
+            <code className="rounded bg-tone px-1 py-0.5 text-xs">accounts</code>,{" "}
             <code className="rounded bg-tone px-1 py-0.5 text-xs">contacts</code>, and <code className="rounded bg-tone px-1 py-0.5 text-xs">workItems</code> with append-only timeline events. Screenshot files are held in Firebase Storage. Everything runs inside the
             free Spark tier.
           </p>
