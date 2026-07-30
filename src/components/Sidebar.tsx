@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
 import { Avatar } from "./ui";
 import { PIcon, type IconName } from "./icons";
 
@@ -14,20 +14,84 @@ const NAV: { key: Page; label: string; icon: IconName }[] = [
   { key: "settings", label: "Settings", icon: "sliders" },
 ];
 
+const DEFAULT_TAB_ORDER = NAV.map((item) => item.key);
+
+function storageKey(userKey: string): string {
+  return `plan-clarity:top-tab-order:${userKey.trim().toLowerCase() || "anonymous"}`;
+}
+
+function storedTabOrder(userKey: string): Page[] {
+  if (typeof window === "undefined") return DEFAULT_TAB_ORDER;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey(userKey)) ?? "[]") as unknown;
+    if (!Array.isArray(parsed)) return DEFAULT_TAB_ORDER;
+    const valid = parsed.filter((key): key is Page => typeof key === "string" && DEFAULT_TAB_ORDER.includes(key as Page));
+    const unique = [...new Set(valid)];
+    return [...unique, ...DEFAULT_TAB_ORDER.filter((key) => !unique.includes(key))];
+  } catch {
+    return DEFAULT_TAB_ORDER;
+  }
+}
+
 export function Sidebar({
   page,
   onNavigate,
   userName,
+  userKey,
   onSignOut,
   workItemsOnly = false,
 }: {
   page: Page;
   onNavigate: (p: Page) => void;
   userName: string;
+  userKey: string;
   onSignOut: () => void;
   workItemsOnly?: boolean;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [tabOrder, setTabOrder] = useState<Page[]>(() => storedTabOrder(userKey));
+  const [draggedTab, setDraggedTab] = useState<Page | null>(null);
+  const [dropTarget, setDropTarget] = useState<Page | null>(null);
+
+  useEffect(() => setTabOrder(storedTabOrder(userKey)), [userKey]);
+
+  const orderedTabs = useMemo(
+    () => tabOrder.map((key) => NAV.find((item) => item.key === key)).filter((item): item is (typeof NAV)[number] => !!item),
+    [tabOrder],
+  );
+
+  function saveOrder(next: Page[]) {
+    setTabOrder(next);
+    try {
+      window.localStorage.setItem(storageKey(userKey), JSON.stringify(next));
+    } catch {
+      // The current session can still be reordered when browser storage is unavailable.
+    }
+  }
+
+  function dropTab(target: Page, event: DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    if (!draggedTab || draggedTab === target) return;
+    const next = tabOrder.filter((key) => key !== draggedTab);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placeAfter = event.clientX > bounds.left + bounds.width / 2;
+    const targetIndex = next.indexOf(target);
+    next.splice(targetIndex + (placeAfter ? 1 : 0), 0, draggedTab);
+    saveOrder(next);
+    setDraggedTab(null);
+    setDropTarget(null);
+  }
+
+  function moveTabWithKeyboard(tab: Page, direction: -1 | 1, event: KeyboardEvent<HTMLButtonElement>) {
+    if (!event.altKey) return;
+    event.preventDefault();
+    const index = tabOrder.indexOf(tab);
+    const destination = index + direction;
+    if (index < 0 || destination < 0 || destination >= tabOrder.length) return;
+    const next = [...tabOrder];
+    [next[index], next[destination]] = [next[destination]!, next[index]!];
+    saveOrder(next);
+  }
 
   return (
     <header className="shrink-0">
@@ -104,13 +168,34 @@ export function Sidebar({
         </div>
       </div>
       <nav className="object-tabs">
-        {NAV.filter((item) => !workItemsOnly || item.key === "workItems").map((item) => {
+        {orderedTabs.filter((item) => !workItemsOnly || item.key === "workItems").map((item) => {
           const active = item.key === page;
           return (
             <button
               key={item.key}
+              draggable={!workItemsOnly}
               onClick={() => onNavigate(item.key)}
-              className={`object-tab ${active ? "on" : ""}`}
+              onDragStart={(event) => {
+                setDraggedTab(item.key);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", item.key);
+              }}
+              onDragEnter={() => setDropTarget(item.key)}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event) => dropTab(item.key, event)}
+              onDragEnd={() => {
+                setDraggedTab(null);
+                setDropTarget(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") moveTabWithKeyboard(item.key, -1, event);
+                if (event.key === "ArrowRight") moveTabWithKeyboard(item.key, 1, event);
+              }}
+              className={`object-tab ${active ? "on" : ""} ${!workItemsOnly ? "cursor-grab active:cursor-grabbing" : ""} ${draggedTab === item.key ? "opacity-45" : ""} ${dropTarget === item.key && draggedTab !== item.key ? "bg-gold-soft/70" : ""}`}
+              title={workItemsOnly ? item.label : `${item.label} · drag to reorder · Option/Alt + arrow keys`}
             >
               <PIcon name={item.icon} size={15} />
               {item.label}

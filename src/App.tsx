@@ -130,7 +130,7 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
 
   return (
     <div className="dot-grid flex h-screen flex-col overflow-hidden">
-      <Sidebar page={page} onNavigate={navigate} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} />
+      <Sidebar page={page} onNavigate={navigate} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} />
       {recordView ?? workItemView ?? (
         <>
           {page === "opportunities" && (
@@ -172,7 +172,7 @@ function WorkItemsOnlyWorkspace({ user, planClarityOnly = false }: { user: Works
   if (!items) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading work items…</p></div>;
   const item = workItemId ? items.find((candidate) => candidate.id === workItemId) : null;
   return <div className="dot-grid flex h-screen flex-col overflow-hidden">
-    <Sidebar page="workItems" onNavigate={() => setWorkItemId(null)} userName={user.name} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
+    <Sidebar page="workItems" onNavigate={() => setWorkItemId(null)} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
     {item
       ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onBack={() => setWorkItemId(null)} />
       : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onOpen={setWorkItemId} />}
