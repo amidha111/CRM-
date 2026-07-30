@@ -9,6 +9,7 @@ import { WorkItemModal } from "../components/workItemModal";
 import { WorkItemBadge } from "./WorkItems";
 import { useWorkItemEvents } from "../lib/workItemHooks";
 import { addWorkItemComment, updateWorkItem } from "../lib/workItemsStore";
+import { WORK_ITEM_ASSIGNEES, workItemAssignee } from "../lib/workItemAssignees";
 import { formatDate, relativeTime } from "../lib/format";
 
 export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"] }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[] }) {
@@ -18,6 +19,8 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
   const [error, setError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [assigneeBusy, setAssigneeBusy] = useState(false);
+  const [assigneeError, setAssigneeError] = useState<string | null>(null);
   const { events, error: eventsError } = useWorkItemEvents(item.id);
   const embedUrl = videoEmbedUrl(item.videoUrl);
 
@@ -52,15 +55,51 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
     }
   }
 
+  async function changeAssignee(email: string) {
+    if (email === item.assigneeEmail) return;
+    const assignee = workItemAssignee(email);
+    setAssigneeBusy(true);
+    setAssigneeError(null);
+    try {
+      await updateWorkItem(item, {
+        type: item.type,
+        product: item.product,
+        subject: item.subject,
+        content: item.content,
+        videoUrl: item.videoUrl,
+        priority: item.priority,
+        status: item.status,
+        assigneeEmail: assignee.email,
+        assigneeName: assignee.name,
+      }, actor, actorEmail);
+    } catch (reason) {
+      setAssigneeError(reason instanceof Error ? reason.message : "Unable to reassign this work item.");
+    } finally {
+      setAssigneeBusy(false);
+    }
+  }
+
   return <main className="page-frame min-w-0">
     <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={item.subject} /></div>
     <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<>
+      <label className="flex items-center gap-2">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">Assigned to</span>
+        <select
+          className={`${inputCls} h-9 w-auto min-w-36 py-1.5 font-semibold`}
+          value={item.assigneeEmail}
+          disabled={assigneeBusy || statusBusy}
+          onChange={(event) => void changeAssignee(event.target.value)}
+          aria-label="Change Work Item assignee"
+        >
+          {WORK_ITEM_ASSIGNEES.map((person) => <option key={person.email} value={person.email}>{person.name}</option>)}
+        </select>
+      </label>
       <label className="flex items-center gap-2">
         <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">Status</span>
         <select
           className={`${inputCls} h-9 w-auto min-w-40 py-1.5 font-semibold`}
           value={item.status}
-          disabled={statusBusy}
+          disabled={statusBusy || assigneeBusy}
           onChange={(event) => void changeStatus(event.target.value as WorkItemStatus)}
           aria-label="Change Work Item status"
         >
@@ -77,7 +116,7 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
       { label: "Priority", value: <WorkItemBadge value={item.priority} kind="priority" /> },
       { label: "Status", value: <WorkItemBadge value={item.status} kind="status" /> },
     ]} />
-    {statusError && <p className="mt-3 rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">{statusError}</p>}
+    {(statusError || assigneeError) && <p className="mt-3 rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">{statusError || assigneeError}</p>}
     <div className="relative z-0 mt-4 grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
       <div className="flex min-w-0 flex-col gap-4">
         <RecordSection title="Details"><WorkItemContent content={item.content} /></RecordSection>
