@@ -63,7 +63,7 @@ export function WorkItemModal({
     setBusy(true);
     try {
       const id = item?.id ?? newWorkItemId();
-      const savedContent = await saveDraftContent(id, content);
+      const savedContent = await saveDraftContent(id, content, product);
       const assignee = assignees.find((person) => person.email === assigneeEmail) ?? assignees[0];
       if (!assignee) throw new Error("No enabled Work Item assignee is available.");
       const input: WorkItemInput = {

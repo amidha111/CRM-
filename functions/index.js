@@ -1,23 +1,35 @@
 import { initializeApp } from "firebase-admin/app";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
+import { BigQuery } from "@google-cloud/bigquery";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 
 initializeApp();
 const db = getFirestore();
 const adminAuth = getAuth();
+const PROJECT_ID = "founderflow-crm-af1";
+const BILLING_DATASET_ID = "cloud_billing_export";
+const bigQuery = new BigQuery({ projectId: PROJECT_ID });
+
+setGlobalOptions({
+  serviceAccount: "crm-runtime@founderflow-crm-af1.iam.gserviceaccount.com",
+  enforceAppCheck: true,
+  maxInstances: 10,
+});
 
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
-const RAHUL_EMAIL = "rahul@klego.ai";
-const ANNE_EMAIL = "lewandowskiannm@gmail.com";
-const WORK_ITEM_ASSIGNEES = new Map([
-  [ADMIN_EMAIL, "Amit Midha"],
-  [RAHUL_EMAIL, "Rahul Panchal"],
-]);
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const DAILY_UPLOAD_LIMIT = 40;
+const DAILY_UPLOAD_BYTES_LIMIT = 100 * 1024 * 1024;
+const DAILY_AI_CALL_LIMIT = 20;
+const DAILY_AI_CHARACTER_LIMIT = 500_000;
+const AI_MIN_INTERVAL_MS = 10_000;
 
 function requestEmail(request) {
   return typeof request.auth?.token?.email === "string"
@@ -58,31 +70,6 @@ async function accessRecord(email) {
     canAssignWorkItems: data.canAssignWorkItems === true,
   };
 }
-
-export const prepareRahulPasswordUser = onCall(
-  { region: "us-central1" },
-  async (request) => {
-    const token = request.auth?.token;
-    const callerEmail = typeof token?.email === "string" ? token.email.toLowerCase() : "";
-    if (!token?.email_verified || callerEmail !== ADMIN_EMAIL) {
-      throw new HttpsError("permission-denied", "Only the CRM owner can prepare password access.");
-    }
-    try {
-      const existing = await adminAuth.getUserByEmail(RAHUL_EMAIL);
-      if (!existing.emailVerified) await adminAuth.updateUser(existing.uid, { emailVerified: true });
-      return { email: RAHUL_EMAIL, created: false };
-    } catch (reason) {
-      if (reason?.code !== "auth/user-not-found") throw reason;
-      await adminAuth.createUser({
-        email: RAHUL_EMAIL,
-        emailVerified: true,
-        password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
-        displayName: "Rahul Panchal",
-      });
-      return { email: RAHUL_EMAIL, created: true };
-    }
-  },
-);
 
 export const preparePasswordUser = onCall(
   { region: "us-central1" },
@@ -136,6 +123,93 @@ export const listWorkItemAssignees = onCall(
       });
     });
     return people.sort((left, right) => left.name.localeCompare(right.name));
+  },
+);
+
+function utcDayKey(date = new Date()) {
+  return date.toISOString().slice(0, 10).replaceAll("-", "");
+}
+
+async function consumeUploadQuota(uid, bytes) {
+  const quotaRef = db.doc(`securityUsage/${uid}_${utcDayKey()}`);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(quotaRef);
+    const uploadCount = snapshot.exists ? Number(snapshot.get("uploadCount") ?? 0) : 0;
+    const uploadBytes = snapshot.exists ? Number(snapshot.get("uploadBytes") ?? 0) : 0;
+    if (uploadCount >= DAILY_UPLOAD_LIMIT || uploadBytes + bytes > DAILY_UPLOAD_BYTES_LIMIT) {
+      throw new HttpsError("resource-exhausted", "Your daily screenshot upload allowance has been reached.");
+    }
+    transaction.set(quotaRef, {
+      uploadCount: uploadCount + 1,
+      uploadBytes: uploadBytes + bytes,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+async function consumeAiQuota(uid, characters) {
+  const quotaRef = db.doc(`securityUsage/${uid}_${utcDayKey()}`);
+  const now = Date.now();
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(quotaRef);
+    const aiCalls = snapshot.exists ? Number(snapshot.get("aiCalls") ?? 0) : 0;
+    const aiCharacters = snapshot.exists ? Number(snapshot.get("aiCharacters") ?? 0) : 0;
+    const lastAiAt = snapshot.exists ? snapshot.get("lastAiAt") : null;
+    if (lastAiAt?.toMillis && now - lastAiAt.toMillis() < AI_MIN_INTERVAL_MS) {
+      throw new HttpsError("resource-exhausted", "Wait a few seconds before running another transcript analysis.");
+    }
+    if (aiCalls >= DAILY_AI_CALL_LIMIT || aiCharacters + characters > DAILY_AI_CHARACTER_LIMIT) {
+      throw new HttpsError("resource-exhausted", "Your daily transcript analysis allowance has been reached.");
+    }
+    transaction.set(quotaRef, {
+      aiCalls: aiCalls + 1,
+      aiCharacters: aiCharacters + characters,
+      lastAiAt: Timestamp.fromMillis(now),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
+export const createWorkItemUploadGrant = onCall(
+  { region: "us-central1", maxInstances: 10 },
+  async (request) => {
+    const workItemId = coerceString(request.data?.workItemId, "workItemId", 100);
+    if (!/^[A-Za-z0-9_-]+$/.test(workItemId)) {
+      throw new HttpsError("invalid-argument", "workItemId contains unsupported characters.");
+    }
+    const product = oneOf(request.data?.product, ["klego", "plan_clarity"], "product");
+    const actor = await assertWorkItemsAllowed(request, product);
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading a screenshot.");
+    const fileSize = request.data?.fileSize;
+    if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > MAX_IMAGE_BYTES) {
+      throw new HttpsError("invalid-argument", "The screenshot size is invalid.");
+    }
+    const contentType = coerceString(request.data?.contentType, "contentType", 100).toLowerCase();
+    if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
+      throw new HttpsError("invalid-argument", "Use a PNG, JPEG, GIF, or WebP screenshot.");
+    }
+    const originalName = coerceString(request.data?.fileName, "fileName", 500);
+    const safeName = originalName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "image";
+    const existing = await db.doc(`workItems/${workItemId}`).get();
+    if (existing.exists && existing.get("product") !== product) {
+      throw new HttpsError("failed-precondition", "The screenshot product does not match this Work Item.");
+    }
+    await consumeUploadQuota(uid, fileSize);
+    const grantRef = db.collection("workItemUploadGrants").doc();
+    const storagePath = `workItems/${workItemId}/${grantRef.id}/${safeName}`;
+    await grantRef.set({
+      uid,
+      email: actor.email,
+      workItemId,
+      product,
+      storagePath,
+      fileSize,
+      contentType,
+      createdAt: FieldValue.serverTimestamp(),
+      expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000),
+    });
+    return { storagePath };
   },
 );
 
@@ -255,6 +329,61 @@ export const getWorkspaceUsage = onCall(
     const storageBillableGib = Math.max(0, fileMetadata.reduce((sum, file) => sum + file.bytes, 0) / gib - 5);
     const firestoreBillableGib = Math.max(0, firestoreEstimatedBytes / gib - 1);
     const estimatedStorageCostUsd = storageBillableGib * 0.02 + firestoreBillableGib * 0.000205479 * 730;
+    let billing = {
+      billingExportConnected: false,
+      billingExportStatus: "not_configured",
+      actualGoogleCostUsd: null,
+      previousMonthGoogleCostUsd: null,
+      billingCurrency: "USD",
+      billingDataThrough: null,
+    };
+    try {
+      const [tables] = await bigQuery.dataset(BILLING_DATASET_ID).getTables();
+      const standardTable = tables.find((table) => /^gcp_billing_export_v1_[A-F0-9_]+$/.test(table.id ?? ""));
+      if (standardTable?.id) {
+        const [rows] = await bigQuery.query({
+          location: "US",
+          query: `
+            WITH project_cost AS (
+              SELECT
+                usage_start_time,
+                export_time,
+                currency,
+                cost + IFNULL((SELECT SUM(credit.amount) FROM UNNEST(credits) AS credit), 0) AS net_cost
+              FROM \`${PROJECT_ID}.${BILLING_DATASET_ID}.${standardTable.id}\`
+              WHERE project.id = @projectId
+                AND usage_start_time >= TIMESTAMP_TRUNC(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MONTH), MONTH)
+            )
+            SELECT
+              ROUND(IFNULL(SUM(IF(usage_start_time >= TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH), net_cost, 0)), 0), 2) AS current_month_cost,
+              ROUND(IFNULL(SUM(IF(
+                usage_start_time >= TIMESTAMP_TRUNC(TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 1 MONTH), MONTH)
+                AND usage_start_time < TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), MONTH),
+                net_cost,
+                0
+              )), 0), 2) AS previous_month_cost,
+              ANY_VALUE(currency) AS currency,
+              MAX(export_time) AS data_through
+            FROM project_cost
+          `,
+          params: { projectId: PROJECT_ID },
+        });
+        const row = rows[0] ?? {};
+        billing = {
+          billingExportConnected: true,
+          billingExportStatus: "ready",
+          actualGoogleCostUsd: Number(row.current_month_cost ?? 0),
+          previousMonthGoogleCostUsd: Number(row.previous_month_cost ?? 0),
+          billingCurrency: String(row.currency ?? "USD"),
+          billingDataThrough: row.data_through?.value ?? row.data_through ?? null,
+        };
+      } else {
+        billing.billingExportStatus = "waiting";
+      }
+    } catch (reason) {
+      console.error("Unable to read Cloud Billing export", reason instanceof Error ? reason.message : reason);
+      billing.billingExportStatus = "unavailable";
+    }
     return {
       storageBytes: fileMetadata.reduce((sum, file) => sum + file.bytes, 0),
       fileCount: fileMetadata.length,
@@ -264,8 +393,9 @@ export const getWorkspaceUsage = onCall(
       firestoreEstimatedBytes,
       estimatedStorageCostUsd,
       billingEnabled: true,
-      billingExportConnected: false,
+      ...billing,
       billingReportUrl: "https://console.cloud.google.com/billing/0192AB-30A8EF-2E84A2/reports?project=founderflow-crm-af1",
+      billingExportUrl: "https://console.cloud.google.com/billing/0192AB-30A8EF-2E84A2/export?project=founderflow-crm-af1",
       measuredAt: new Date().toISOString(),
     };
   },
@@ -284,7 +414,10 @@ export const deleteWorkspaceFile = onCall(
     const [exists] = await file.exists();
     if (!exists) throw new HttpsError("not-found", "This file no longer exists.");
 
-    const workItems = await db.collection("workItems").get();
+    const [workItems, uploadGrants] = await Promise.all([
+      db.collection("workItems").get(),
+      db.collection("workItemUploadGrants").where("storagePath", "==", storagePath).get(),
+    ]);
     const linked = workItems.docs.flatMap((record) => {
       const content = Array.isArray(record.get("content")) ? record.get("content") : [];
       const nextContent = content.filter((block) => block?.storagePath !== storagePath);
@@ -304,8 +437,17 @@ export const deleteWorkspaceFile = onCall(
       });
       await batch.commit();
     }
+    for (let start = 0; start < uploadGrants.docs.length; start += 400) {
+      const batch = db.batch();
+      uploadGrants.docs.slice(start, start + 400).forEach((record) => batch.delete(record.ref));
+      await batch.commit();
+    }
     await file.delete();
-    return { storagePath, updatedWorkItems: linked.length };
+    return {
+      storagePath,
+      updatedWorkItems: linked.length,
+      deletedFirestoreRecords: linked.length + uploadGrants.size,
+    };
   },
 );
 
@@ -366,6 +508,34 @@ function workItemContent(value, workItemId) {
     }
     throw new HttpsError("invalid-argument", "A Work Item content block type is invalid.");
   });
+}
+
+function imageGrantId(storagePath, workItemId) {
+  const match = storagePath.match(new RegExp(`^workItems/${workItemId}/([A-Za-z0-9_-]+)/[^/]+$`));
+  if (!match) throw new HttpsError("invalid-argument", "A screenshot is missing its secure upload grant.");
+  return match[1];
+}
+
+function assertValidImageGrant(snapshot, block, workItemId, actorEmail) {
+  if (!snapshot.exists) throw new HttpsError("failed-precondition", "A screenshot upload grant has expired or was already used.");
+  const data = snapshot.data();
+  if (
+    data.email !== actorEmail
+    || data.workItemId !== workItemId
+    || data.storagePath !== block.storagePath
+    || !data.expiresAt?.toMillis
+    || data.expiresAt.toMillis() <= Date.now()
+  ) {
+    throw new HttpsError("permission-denied", "A screenshot upload grant is invalid.");
+  }
+}
+
+async function assertUploadedImagesExist(blocks) {
+  const bucket = getStorage().bucket("founderflow-crm-af1.firebasestorage.app");
+  await Promise.all(blocks.map(async (block) => {
+    const [exists] = await bucket.file(block.storagePath).exists();
+    if (!exists) throw new HttpsError("failed-precondition", `Screenshot ${block.name} did not finish uploading.`);
+  }));
 }
 
 function formatWorkItemReference(sequenceNumber) {
@@ -444,12 +614,20 @@ export const createWorkItemRecord = onCall(
       assigneeEmail,
       assigneeName,
     };
+    const imageBlocks = input.content.filter((block) => block.type === "image");
+    const grantRefs = imageBlocks.map((block) => db.doc(`workItemUploadGrants/${imageGrantId(block.storagePath, id)}`));
+    await assertUploadedImagesExist(imageBlocks);
     const itemRef = db.doc(`workItems/${id}`);
     const counterRef = db.doc("systemCounters/workItems");
     const eventRef = itemRef.collection("events").doc();
     const result = await db.runTransaction(async (transaction) => {
-      const [item, counter] = await Promise.all([transaction.get(itemRef), transaction.get(counterRef)]);
+      const [item, counter, ...grants] = await Promise.all([
+        transaction.get(itemRef),
+        transaction.get(counterRef),
+        ...grantRefs.map((ref) => transaction.get(ref)),
+      ]);
       if (item.exists) throw new HttpsError("already-exists", "This Work Item already exists.");
+      grants.forEach((grant, index) => assertValidImageGrant(grant, imageBlocks[index], id, actor.email));
       const previous = counter.exists ? counter.get("lastNumber") : 0;
       if (!Number.isSafeInteger(previous) || previous < 0) {
         throw new HttpsError("internal", "The Work Item number counter is invalid.");
@@ -473,6 +651,7 @@ export const createWorkItemRecord = onCall(
         actorName: actor.name,
         createdAt: FieldValue.serverTimestamp(),
       });
+      grantRefs.forEach((ref) => transaction.delete(ref));
       return { referenceId, sequenceNumber };
     });
     return result;
@@ -518,29 +697,33 @@ function parseJsonObject(text) {
   }
 }
 
+function cleanOutputString(value, maxLength = 4_000) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
 function normalizeAnalysis(raw) {
   const actionItems = Array.isArray(raw.actionItems)
-    ? raw.actionItems.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8)
+    ? raw.actionItems.map((value) => cleanOutputString(String(value), 1_000)).filter(Boolean).slice(0, 8)
     : [];
   const stakeholders = Array.isArray(raw.stakeholders)
-    ? raw.stakeholders.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 8)
+    ? raw.stakeholders.map((value) => cleanOutputString(String(value), 500)).filter(Boolean).slice(0, 8)
     : [];
   const risks = Array.isArray(raw.risks)
-    ? raw.risks.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 6)
+    ? raw.risks.map((value) => cleanOutputString(String(value), 1_000)).filter(Boolean).slice(0, 6)
     : [];
   const buyingSignals = Array.isArray(raw.buyingSignals)
-    ? raw.buyingSignals.map(String).map((s) => s.trim()).filter(Boolean).slice(0, 6)
+    ? raw.buyingSignals.map((value) => cleanOutputString(String(value), 1_000)).filter(Boolean).slice(0, 6)
     : [];
   const nextAction = raw.nextAction && typeof raw.nextAction === "object"
     ? {
-        text: typeof raw.nextAction.text === "string" ? raw.nextAction.text.trim() : "",
-        dueDate: typeof raw.nextAction.dueDate === "string" ? raw.nextAction.dueDate.trim() : "",
+        text: cleanOutputString(raw.nextAction.text, 1_000),
+        dueDate: cleanOutputString(raw.nextAction.dueDate, 10),
       }
     : null;
 
   return {
-    summary: typeof raw.summary === "string" ? raw.summary.trim() : "",
-    customerNeed: typeof raw.customerNeed === "string" ? raw.customerNeed.trim() : "",
+    summary: cleanOutputString(raw.summary),
+    customerNeed: cleanOutputString(raw.customerNeed),
     buyingSignals,
     risks,
     actionItems,
@@ -550,10 +733,12 @@ function normalizeAnalysis(raw) {
 }
 
 export const analyzeMeetTranscript = onCall(
-  { region: "us-central1", secrets: [deepseekApiKey], timeoutSeconds: 120, memory: "512MiB" },
+  { region: "us-central1", secrets: [deepseekApiKey], timeoutSeconds: 120, memory: "512MiB", maxInstances: 3 },
   async (request) => {
     await assertAllowed(request);
     const transcript = coerceString(request.data?.transcript, "transcript", 120_000);
+    if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Sign in before analyzing a transcript.");
+    await consumeAiQuota(request.auth.uid, transcript.length);
     const opportunityName = coerceString(request.data?.opportunityName, "opportunityName", 500);
     const accountName =
       typeof request.data?.accountName === "string" ? request.data.accountName.trim().slice(0, 500) : "";
@@ -568,6 +753,7 @@ export const analyzeMeetTranscript = onCall(
         model: "deepseek-v4-flash",
         response_format: { type: "json_object" },
         stream: false,
+        max_tokens: 2_000,
         messages: [
           {
             role: "system",
@@ -587,8 +773,8 @@ export const analyzeMeetTranscript = onCall(
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new HttpsError("internal", `DeepSeek request failed: ${body.slice(0, 500)}`);
+      console.error("DeepSeek request failed", { status: response.status });
+      throw new HttpsError("unavailable", "Transcript analysis is temporarily unavailable.");
     }
 
     const data = await response.json();

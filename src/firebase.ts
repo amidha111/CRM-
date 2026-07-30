@@ -3,6 +3,7 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 
 export const DEMO = import.meta.env.VITE_DEMO === "1";
 
@@ -16,6 +17,10 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+export const appCheck = DEMO ? null : initializeAppCheck(app, {
+  provider: new ReCaptchaEnterpriseProvider("6LcxwG0tAAAAAKaMKLLn-y3VGnNhJxeasRchSB8-"),
+  isTokenAutoRefreshEnabled: true,
+});
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const functions = getFunctions(app, "us-central1");

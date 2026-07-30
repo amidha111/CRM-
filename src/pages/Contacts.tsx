@@ -5,6 +5,7 @@ import { NewContactModal } from "../components/modals";
 import type { OpenRecord } from "../components/record";
 import { PageHeader } from "../components/pageChrome";
 import { PIcon } from "../components/icons";
+import { safeHttpUrl } from "../lib/safeUrl";
 
 type ContactFilter = "all" | "accounted" | "unassigned";
 
@@ -155,9 +156,9 @@ export function ContactsPage({
                 <td className="px-3 py-4 text-muted">{c.title ?? "—"}</td>
                 <td className="px-3 py-4 text-muted">{c.email ?? "—"}</td>
                 <td className="px-3 py-4 text-muted">
-                  {c.linkedinUrl ? (
+                  {safeHttpUrl(c.linkedinUrl) ? (
                     <a
-                      href={c.linkedinUrl}
+                      href={safeHttpUrl(c.linkedinUrl)!}
                       target="_blank"
                       rel="noreferrer"
                       onClick={(e) => e.stopPropagation()}

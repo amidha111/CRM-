@@ -1,5 +1,6 @@
 import { useEffect, useState, type ClipboardEvent } from "react";
 import type { WorkItemContentBlock } from "../types";
+import type { WorkItemProduct } from "../types";
 import { resolveWorkItemImageUrl, uploadWorkItemImage } from "../lib/workItemsStore";
 import { PIcon } from "./icons";
 import { inputCls } from "./ui";
@@ -22,6 +23,7 @@ export function draftContent(content?: WorkItemContentBlock[]): DraftWorkItemCon
 export async function saveDraftContent(
   workItemId: string,
   blocks: DraftWorkItemContentBlock[],
+  product: WorkItemProduct,
 ): Promise<WorkItemContentBlock[]> {
   const saved: WorkItemContentBlock[] = [];
   for (const block of blocks) {
@@ -32,7 +34,8 @@ export async function saveDraftContent(
     if (block.storagePath) {
       saved.push({ id: block.id, type: "image", storagePath: block.storagePath, name: block.name });
     } else if (block.file) {
-      saved.push(await uploadWorkItemImage(workItemId, block.id, block.file));
+      const uploaded = await uploadWorkItemImage(workItemId, product, block.file);
+      saved.push({ ...uploaded, id: block.id });
     }
   }
   return saved;

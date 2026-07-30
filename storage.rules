@@ -24,16 +24,43 @@ service firebase.storage {
         );
     }
 
-    match /workItems/{workItemId}/{fileName} {
-      allow read: if hasWorkItemsAccess()
+    function canReadWorkItemFile(workItemId) {
+      return hasWorkItemsAccess()
+        && firestore.exists(/databases/(default)/documents/workItems/$(workItemId))
         && (!isPlanClarityOnlyUser()
           || firestore.get(/databases/(default)/documents/workItems/$(workItemId)).data.product == 'plan_clarity');
-      allow create, update: if hasWorkItemsAccess()
+    }
+
+    function hasValidUploadGrant(workItemId, grantId, fileName) {
+      return hasWorkItemsAccess()
+        && firestore.exists(/databases/(default)/documents/workItemUploadGrants/$(grantId))
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.uid == request.auth.uid
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.email == request.auth.token.email
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.workItemId == workItemId
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.storagePath == 'workItems/' + workItemId + '/' + grantId + '/' + fileName
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.expiresAt > request.time
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.fileSize == request.resource.size
+        && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.contentType == request.resource.contentType
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
         && (!isPlanClarityOnlyUser()
-          || !firestore.exists(/databases/(default)/documents/workItems/$(workItemId))
-          || firestore.get(/databases/(default)/documents/workItems/$(workItemId)).data.product == 'plan_clarity')
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+          || firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.product == 'plan_clarity');
+    }
+
+    // Legacy two-segment paths remain readable but can no longer be created or overwritten.
+    match /workItems/{workItemId}/{fileName} {
+      allow read: if canReadWorkItemFile(workItemId);
+      allow create, update: if false;
+      allow delete: if isSignedInVerified()
+        && request.auth.token.email == 'amidha111@gmail.com';
+    }
+
+    // New uploads require an exact, short-lived, server-issued grant and cannot be overwritten.
+    match /workItems/{workItemId}/{grantId}/{fileName} {
+      allow read: if canReadWorkItemFile(workItemId);
+      allow create: if hasValidUploadGrant(workItemId, grantId, fileName);
+      allow update: if false;
       allow delete: if isSignedInVerified()
         && request.auth.token.email == 'amidha111@gmail.com';
     }

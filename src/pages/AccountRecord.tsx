@@ -5,6 +5,7 @@ import { Avatar, GhostButton, PrimaryButton, StagePill } from "../components/ui"
 import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } from "../components/record";
 import { EditAccountModal, NewContactModal, NewOpportunityModal } from "../components/modals";
 import { deleteAccount } from "../lib/store";
+import { safeHttpUrl } from "../lib/safeUrl";
 
 export function AccountRecordPage({
   account,
@@ -29,6 +30,7 @@ export function AccountRecordPage({
   const [showNewContact, setShowNewContact] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const websiteUrl = safeHttpUrl(account.website, true);
 
   async function handleDelete() {
     if (!window.confirm(`Delete account "${account.name}"? This cannot be undone.`)) return;
@@ -79,9 +81,9 @@ export function AccountRecordPage({
             { label: "Industry", value: account.industry ?? "—" },
             {
               label: "Website",
-              value: account.website ? (
+              value: websiteUrl ? (
                 <a
-                  href={account.website.startsWith("http") ? account.website : `https://${account.website}`}
+                  href={websiteUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="text-gold-deep underline"

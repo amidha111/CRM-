@@ -10,6 +10,7 @@ import { WorkItemBadge } from "./WorkItems";
 import { useWorkItemEvents } from "../lib/workItemHooks";
 import { addWorkItemComment, updateWorkItem } from "../lib/workItemsStore";
 import { formatDate, relativeTime } from "../lib/format";
+import { safeHttpUrl } from "../lib/safeUrl";
 
 export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"], assignees }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[]; assignees: WorkItemAssignee[] }) {
   const [editing, setEditing] = useState(false);
@@ -22,6 +23,7 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
   const [assigneeError, setAssigneeError] = useState<string | null>(null);
   const { events, error: eventsError } = useWorkItemEvents(item.id);
   const embedUrl = videoEmbedUrl(item.videoUrl);
+  const videoUrl = safeHttpUrl(item.videoUrl);
 
   async function submitComment(event: FormEvent) {
     event.preventDefault();
@@ -121,9 +123,9 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
       <div className="flex min-w-0 flex-col gap-4">
         <RecordSection title="Details"><WorkItemContent content={item.content} /></RecordSection>
         <RecordSection title="Issue Explained">
-          {item.videoUrl ? <div className="flex flex-col gap-3">
+          {videoUrl ? <div className="flex flex-col gap-3">
             {embedUrl && <div className="aspect-video overflow-hidden rounded-lg border border-line bg-navy"><iframe className="h-full w-full" src={embedUrl} title="Issue walkthrough video" allow="fullscreen; picture-in-picture" allowFullScreen /></div>}
-            <a className="inline-flex items-center gap-2 self-start font-semibold text-gold-deep hover:underline" href={item.videoUrl} target="_blank" rel="noreferrer">Open walkthrough video <PIcon name="chevronRight" size={14} /></a>
+            <a className="inline-flex items-center gap-2 self-start font-semibold text-gold-deep hover:underline" href={videoUrl} target="_blank" rel="noreferrer">Open walkthrough video <PIcon name="chevronRight" size={14} /></a>
           </div> : <p className="text-sm text-muted">No walkthrough video has been added.</p>}
         </RecordSection>
       </div>

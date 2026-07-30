@@ -43,6 +43,49 @@ service cloud.firestore {
       return isAllowedUser();
     }
 
+    function currentDisplayName() {
+      return isAdmin()
+        ? 'Amit Midha'
+        : get(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email)).data.displayName;
+    }
+
+    function isOptionalHttpUrl(value) {
+      return value == null
+        || (value is string && value.size() <= 2048 && value.matches('^https?://.+'));
+    }
+
+    function isValidAssignee(email, displayName) {
+      return (email == 'amidha111@gmail.com' && displayName == 'Amit Midha')
+        || (
+          email is string
+          && exists(/databases/$(database)/documents/allowedUsers/$(email))
+          && get(/databases/$(database)/documents/allowedUsers/$(email)).data.disabled != true
+          && get(/databases/$(database)/documents/allowedUsers/$(email)).data.canAssignWorkItems == true
+          && get(/databases/$(database)/documents/allowedUsers/$(email)).data.displayName == displayName
+        );
+    }
+
+    function isValidWorkItem() {
+      return request.resource.data.keys().hasOnly([
+          'sequenceNumber', 'referenceId', 'type', 'product', 'subject', 'content', 'videoUrl',
+          'priority', 'status', 'assigneeEmail', 'assigneeName', 'createdByEmail', 'createdByName',
+          'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.type in ['bug', 'feature']
+        && request.resource.data.product in ['klego', 'plan_clarity']
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 500
+        && request.resource.data.content is list
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 100
+        && isOptionalHttpUrl(request.resource.data.videoUrl)
+        && request.resource.data.priority in ['low', 'medium', 'high']
+        && request.resource.data.status in ['open', 'in_progress', 'ready_for_review', 'closed']
+        && isValidAssignee(request.resource.data.assigneeEmail, request.resource.data.assigneeName)
+        && request.resource.data.updatedAt == request.time;
+    }
+
     function createsWithoutRecordNumber() {
       return !request.resource.data.keys().hasAny(['sequenceNumber', 'referenceId']);
     }
@@ -60,20 +103,28 @@ service cloud.firestore {
 
     match /activities/{activityId} {
       allow read, delete: if hasFullAccess(); // delete only for record cascade
-      allow create: if hasFullAccess() && createsWithoutRecordNumber();
+      allow create: if hasFullAccess()
+        && createsWithoutRecordNumber()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && isOptionalHttpUrl(request.resource.data.link);
       allow update: if false;                     // entries are never edited
     }
 
     match /contacts/{contactId} {
       allow read, delete: if hasFullAccess();
-      allow create: if hasFullAccess() && createsWithoutRecordNumber();
-      allow update: if hasFullAccess() && preservesRecordNumber();
+      allow create: if hasFullAccess() && createsWithoutRecordNumber()
+        && isOptionalHttpUrl(request.resource.data.linkedinUrl);
+      allow update: if hasFullAccess() && preservesRecordNumber()
+        && isOptionalHttpUrl(request.resource.data.linkedinUrl);
     }
 
     match /accounts/{accountId} {
       allow read, delete: if hasFullAccess();
-      allow create: if hasFullAccess() && createsWithoutRecordNumber();
-      allow update: if hasFullAccess() && preservesRecordNumber();
+      allow create: if hasFullAccess() && createsWithoutRecordNumber()
+        && isOptionalHttpUrl(request.resource.data.website);
+      allow update: if hasFullAccess() && preservesRecordNumber()
+        && isOptionalHttpUrl(request.resource.data.website);
     }
 
     match /workItems/{workItemId} {
@@ -83,6 +134,7 @@ service cloud.firestore {
       // allocated atomically and cannot be forged by a browser client.
       allow create: if false;
       allow update: if hasWorkItemsAccess()
+        && isValidWorkItem()
         && request.resource.data.sequenceNumber == resource.data.sequenceNumber
         && request.resource.data.referenceId == resource.data.referenceId
         && request.resource.data.createdAt == resource.data.createdAt
@@ -94,9 +146,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       match /events/{eventId} {
-        allow read, create: if hasWorkItemsAccess()
+        allow read: if hasWorkItemsAccess()
           && (!isPlanClarityOnlyUser()
             || getAfter(/databases/$(database)/documents/workItems/$(workItemId)).data.product == 'plan_clarity');
+        allow create: if hasWorkItemsAccess()
+          && (!isPlanClarityOnlyUser()
+            || getAfter(/databases/$(database)/documents/workItems/$(workItemId)).data.product == 'plan_clarity')
+          && request.resource.data.keys().hasOnly(['kind', 'body', 'actorEmail', 'actorName', 'createdAt'])
+          && request.resource.data.kind in ['comment', 'system']
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 5000
+          && request.resource.data.actorEmail == request.auth.token.email
+          && request.resource.data.actorName == currentDisplayName()
+          && request.resource.data.createdAt == request.time;
         allow update, delete: if false;
       }
     }
@@ -105,12 +168,35 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /securityUsage/{usageId} {
+      allow read, write: if false;
+    }
+
+    match /workItemUploadGrants/{grantId} {
+      allow read, write: if false;
+    }
+
     match /allowedUsers/{email} {
       allow read: if isAdmin()
         || (isSignedInVerified() && request.auth.token.email == email);
-      allow create, update: if isAdmin()
+      allow create: if isAdmin()
         && email != 'amidha111@gmail.com'
-        && request.resource.data.email == email;
+        && request.resource.data.keys().hasOnly([
+          'email', 'displayName', 'disabled', 'accessRole', 'workItemProducts', 'canAssignWorkItems',
+          'addedBy', 'addedByName', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.email == email
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 200
+        && request.resource.data.disabled == false
+        && request.resource.data.accessRole == 'full'
+        && request.resource.data.workItemProducts == ['klego', 'plan_clarity']
+        && request.resource.data.canAssignWorkItems == false
+        && request.resource.data.addedBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if false;
       allow delete: if isAdmin()
         && email != 'amidha111@gmail.com';
     }

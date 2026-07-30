@@ -6,6 +6,7 @@ import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } 
 import { GhostButton } from "../components/ui";
 import { EditContactModal } from "../components/modals";
 import { deleteContact } from "../lib/store";
+import { safeHttpUrl } from "../lib/safeUrl";
 
 export function ContactRecordPage({
   contact,
@@ -23,6 +24,7 @@ export function ContactRecordPage({
   onOpenRecord: OpenRecord;
 }) {
   const [showEdit, setShowEdit] = useState(false);
+  const linkedinUrl = safeHttpUrl(contact.linkedinUrl);
   const deals = useMemo(() => opps.filter((o) => o.contactIds.includes(contact.id)), [opps, contact.id]);
 
   async function handleDelete() {
@@ -72,8 +74,8 @@ export function ContactRecordPage({
             { label: "Phone", value: contact.phone ?? "—" },
             {
               label: "LinkedIn",
-              value: contact.linkedinUrl ? (
-                <a href={contact.linkedinUrl} target="_blank" rel="noreferrer" className="text-gold-deep underline">
+              value: linkedinUrl ? (
+                <a href={linkedinUrl} target="_blank" rel="noreferrer" className="text-gold-deep underline">
                   Profile
                 </a>
               ) : (

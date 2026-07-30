@@ -35,6 +35,17 @@ function formatUsd(value: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(value);
 }
 
+function billingStatusText(usage: WorkspaceUsage): string {
+  if (usage.billingExportStatus === "ready") {
+    return usage.billingDataThrough
+      ? `Google data through ${new Date(usage.billingDataThrough).toLocaleString()}`
+      : "Live Cloud Billing export";
+  }
+  if (usage.billingExportStatus === "waiting") return "Waiting for Google to create the export table";
+  if (usage.billingExportStatus === "unavailable") return "Billing export could not be read right now";
+  return "Cloud Billing export is not connected";
+}
+
 function UserEditor({
   user,
   busy,
@@ -140,9 +151,9 @@ export function SettingsPage({
     setBusy(`file:${storagePath}`);
     setUsageError(null);
     try {
-      const response = await httpsCallable<{ storagePath: string }, { updatedWorkItems: number }>(functions, "deleteWorkspaceFile")({ storagePath });
+      const response = await httpsCallable<{ storagePath: string }, { updatedWorkItems: number; deletedFirestoreRecords: number }>(functions, "deleteWorkspaceFile")({ storagePath });
       await loadUsage();
-      setMessage(`File deleted from Storage and removed from ${response.data.updatedWorkItems} linked Work Item record${response.data.updatedWorkItems === 1 ? "" : "s"}.`);
+      setMessage(`File deleted from Firebase Storage and removed from ${response.data.deletedFirestoreRecords} Firestore record${response.data.deletedFirestoreRecords === 1 ? "" : "s"}.`);
     } catch (reason) {
       setUsageError(reason instanceof Error ? reason.message : "Unable to delete this file.");
     } finally {
@@ -243,11 +254,12 @@ export function SettingsPage({
     {tab === "storage" && <div className="flex flex-col gap-4">
       {!admin ? <div className="card p-6 text-sm text-muted">Only Amit Midha can view workspace usage.</div> : <>
         <div className="flex items-center justify-between"><div><h2 className="text-lg font-bold text-ink">Storage & Google Cost</h2><p className="text-sm text-muted">Live Firebase files, Firestore records, and current storage-cost visibility.</p></div><button type="button" className="toolbar-button" onClick={() => void loadUsage()} disabled={usageLoading}><PIcon name="refresh" size={14} />{usageLoading ? "Measuring…" : "Refresh"}</button></div>
+        {message && <p className="rounded-lg bg-success-soft px-4 py-3 text-sm text-success">{message}</p>}
         {usageError && <p className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">{usageError}</p>}
         {!usage && usageLoading ? <div className="card p-10 text-center text-muted">Measuring file storage…</div> : usage && <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><div className="card p-5"><p className="page-kind">File storage used</p><p className="mt-1 text-3xl font-bold text-ink">{formatBytes(usage.storageBytes)}</p></div><div className="card p-5"><p className="page-kind">Firestore data estimate</p><p className="mt-1 text-3xl font-bold text-ink">{formatBytes(usage.firestoreEstimatedBytes)}</p></div><div className="card p-5"><p className="page-kind">CRM records</p><p className="mt-1 text-3xl font-bold text-ink">{totalRecords}</p></div><div className="card p-5"><p className="page-kind">Estimated storage charge</p><p className="mt-1 text-3xl font-bold text-success">{formatUsd(usage.estimatedStorageCostUsd)}</p><p className="mt-1 text-xs text-muted">per month at current size</p></div></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><div className="card border-gold/30 bg-gold-soft/30 p-5"><p className="page-kind">Google cost this month</p><p className="mt-1 text-3xl font-bold text-ink">{usage.actualGoogleCostUsd === null ? "—" : formatUsd(usage.actualGoogleCostUsd)}</p><p className="mt-1 text-xs text-muted">{billingStatusText(usage)}</p></div><div className="card p-5"><p className="page-kind">File storage used</p><p className="mt-1 text-3xl font-bold text-ink">{formatBytes(usage.storageBytes)}</p></div><div className="card p-5"><p className="page-kind">Firestore data estimate</p><p className="mt-1 text-3xl font-bold text-ink">{formatBytes(usage.firestoreEstimatedBytes)}</p></div><div className="card p-5"><p className="page-kind">CRM records</p><p className="mt-1 text-3xl font-bold text-ink">{totalRecords}</p></div><div className="card p-5"><p className="page-kind">Estimated storage charge</p><p className="mt-1 text-3xl font-bold text-success">{formatUsd(usage.estimatedStorageCostUsd)}</p><p className="mt-1 text-xs text-muted">per month at current size</p></div></div>
           <div className="card border-gold/30 bg-gold-soft/30 p-5">
-            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h3 className="font-semibold text-ink">Actual Google Cloud bill</h3><p className="mt-1 max-w-3xl text-sm text-muted">This project has billing enabled. The exact amount Google charges includes reads, writes, Functions, Hosting, network use, credits, and tax. A Cloud Billing export is not connected yet, so the CRM shows the measurable storage estimate above—not an invoice total.</p></div><a href={usage.billingReportUrl} target="_blank" rel="noreferrer" className="toolbar-button whitespace-nowrap">Open Google Billing</a></div>
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h3 className="font-semibold text-ink">Actual Google Cloud usage cost</h3><p className="mt-1 max-w-3xl text-sm text-muted">{usage.billingExportStatus === "ready" ? <>This month: <b>{formatUsd(usage.actualGoogleCostUsd ?? 0)}</b>. Previous month: <b>{formatUsd(usage.previousMonthGoogleCostUsd ?? 0)}</b>. These are net project usage costs after credits from Google&apos;s billing export; invoice-level tax or adjustments may differ.</> : <>The secure billing dataset exists, but Google&apos;s Standard usage cost export still needs to be connected or finish its first load. Until then, the CRM deliberately shows a dash instead of a false zero.</>}</p></div><div className="flex flex-wrap gap-2"><a href={usage.billingExportUrl} target="_blank" rel="noreferrer" className="toolbar-button whitespace-nowrap">Configure export</a><a href={usage.billingReportUrl} target="_blank" rel="noreferrer" className="toolbar-button whitespace-nowrap">Open Google Billing</a></div></div>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="card p-5"><h3 className="font-semibold text-ink">File storage breakdown</h3><div className="mt-4 divide-y divide-line-soft">{usage.storageBreakdown.length ? usage.storageBreakdown.map((entry) => <div key={entry.label} className="flex items-center justify-between py-3"><span><b className="block text-sm">{entry.label}</b><span className="text-xs text-muted">{entry.fileCount} file{entry.fileCount === 1 ? "" : "s"}</span></span><b>{formatBytes(entry.bytes)}</b></div>) : <p className="py-6 text-sm text-muted">No uploaded files are consuming storage.</p>}</div></div>

@@ -190,7 +190,13 @@ export interface WorkspaceUsage {
   estimatedStorageCostUsd: number;
   billingEnabled: boolean;
   billingExportConnected: boolean;
+  billingExportStatus: "not_configured" | "waiting" | "ready" | "unavailable";
+  actualGoogleCostUsd: number | null;
+  previousMonthGoogleCostUsd: number | null;
+  billingCurrency: string;
+  billingDataThrough: string | null;
   billingReportUrl: string;
+  billingExportUrl: string;
   measuredAt: Date;
 }
 

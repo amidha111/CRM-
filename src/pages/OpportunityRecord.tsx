@@ -16,6 +16,7 @@ import { Avatar, DueBadge, Field, GhostButton, PrimaryButton, StagePill, inputCl
 import { Breadcrumb, RecordHeader, RecordLink, RecordSection, type OpenRecord } from "../components/record";
 import { AddStakeholderModal, EditOpportunityModal, LogActivityModal, MeetTranscriptModal } from "../components/modals";
 import { PIcon, type IconName } from "../components/icons";
+import { safeHttpUrl } from "../lib/safeUrl";
 
 function parseLocalDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -280,8 +281,8 @@ export function OpportunityRecordPage({
                       </span>
                     </div>
                     {a.note && <p className="mt-2 rounded-lg border border-line-soft bg-tone px-3 py-2 text-xs leading-relaxed text-muted">{a.note}</p>}
-                    {a.link && (
-                      <a href={a.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-gold-deep underline">
+                    {safeHttpUrl(a.link) && (
+                      <a href={safeHttpUrl(a.link)!} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-gold-deep underline">
                         {a.link}
                       </a>
                     )}
