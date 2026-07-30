@@ -196,6 +196,8 @@ export type WorkItemContentBlock =
 
 export interface WorkItem {
   id: string;
+  sequenceNumber: number;
+  referenceId: string;
   type: WorkItemType;
   product: WorkItemProduct;
   subject: string;

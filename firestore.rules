@@ -60,9 +60,15 @@ service cloud.firestore {
     match /workItems/{workItemId} {
       allow read: if hasWorkItemsAccess()
         && (!isPlanClarityOnlyUser() || resource.data.product == 'plan_clarity');
-      allow create: if hasWorkItemsAccess()
-        && (!isPlanClarityOnlyUser() || request.resource.data.product == 'plan_clarity');
+      // Creation is handled by createWorkItemRecord so reference numbers are
+      // allocated atomically and cannot be forged by a browser client.
+      allow create: if false;
       allow update: if hasWorkItemsAccess()
+        && request.resource.data.sequenceNumber == resource.data.sequenceNumber
+        && request.resource.data.referenceId == resource.data.referenceId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdByEmail == resource.data.createdByEmail
+        && request.resource.data.createdByName == resource.data.createdByName
         && (!isPlanClarityOnlyUser()
           || (resource.data.product == 'plan_clarity'
             && request.resource.data.product == 'plan_clarity'));
@@ -74,6 +80,10 @@ service cloud.firestore {
             || getAfter(/databases/$(database)/documents/workItems/$(workItemId)).data.product == 'plan_clarity');
         allow update, delete: if false;
       }
+    }
+
+    match /systemCounters/{counterId} {
+      allow read, write: if false;
     }
 
     match /allowedUsers/{email} {
