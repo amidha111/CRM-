@@ -187,7 +187,7 @@ export const WORK_ITEM_STATUS_LABELS: Record<WorkItemStatus, string> = {
   open: "Open",
   in_progress: "In Progress",
   ready_for_review: "Ready for Review",
-  closed: "Closed",
+  closed: "Resolved",
 };
 
 export type WorkItemContentBlock =

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { Actor, WorkItem, WorkItemProduct } from "../types";
+import type { Actor, WorkItem, WorkItemProduct, WorkItemStatus } from "../types";
 import { WORK_ITEM_PRODUCT_LABELS } from "../types";
 import { Breadcrumb, RecordHeader, RecordSection } from "../components/record";
 import { PIcon } from "../components/icons";
@@ -8,7 +8,7 @@ import { WorkItemContent, videoEmbedUrl } from "../components/workItemContent";
 import { WorkItemModal } from "../components/workItemModal";
 import { WorkItemBadge } from "./WorkItems";
 import { useWorkItemEvents } from "../lib/workItemHooks";
-import { addWorkItemComment } from "../lib/workItemsStore";
+import { addWorkItemComment, updateWorkItem } from "../lib/workItemsStore";
 import { formatDate, relativeTime } from "../lib/format";
 
 export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"] }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[] }) {
@@ -16,6 +16,8 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const { events, error: eventsError } = useWorkItemEvents(item.id);
   const embedUrl = videoEmbedUrl(item.videoUrl);
 
@@ -27,14 +29,55 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
     finally { setBusy(false); }
   }
 
+  async function changeStatus(status: WorkItemStatus) {
+    if (status === item.status) return;
+    setStatusBusy(true);
+    setStatusError(null);
+    try {
+      await updateWorkItem(item, {
+        type: item.type,
+        product: item.product,
+        subject: item.subject,
+        content: item.content,
+        videoUrl: item.videoUrl,
+        priority: item.priority,
+        status,
+        assigneeEmail: item.assigneeEmail,
+        assigneeName: item.assigneeName,
+      }, actor, actorEmail);
+    } catch (reason) {
+      setStatusError(reason instanceof Error ? reason.message : "Unable to change this status.");
+    } finally {
+      setStatusBusy(false);
+    }
+  }
+
   return <main className="page-frame overflow-y-auto">
     <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={item.subject} /></div>
-    <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<button type="button" className="toolbar-button" onClick={() => setEditing(true)}><PIcon name="edit" size={15} />Edit</button>} highlights={[
+    <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<>
+      <label className="flex items-center gap-2">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">Status</span>
+        <select
+          className={`${inputCls} h-9 w-auto min-w-40 py-1.5 font-semibold`}
+          value={item.status}
+          disabled={statusBusy}
+          onChange={(event) => void changeStatus(event.target.value as WorkItemStatus)}
+          aria-label="Change Work Item status"
+        >
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="ready_for_review">Ready for Review</option>
+          <option value="closed">Resolved</option>
+        </select>
+      </label>
+      <button type="button" className="toolbar-button" onClick={() => setEditing(true)}><PIcon name="edit" size={15} />Edit</button>
+    </>} highlights={[
       { label: "Type", value: <WorkItemBadge value={item.type} kind="type" /> },
       { label: "Product", value: WORK_ITEM_PRODUCT_LABELS[item.product] },
       { label: "Priority", value: <WorkItemBadge value={item.priority} kind="priority" /> },
       { label: "Status", value: <WorkItemBadge value={item.status} kind="status" /> },
     ]} />
+    {statusError && <p className="mt-3 rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-sm text-danger">{statusError}</p>}
     <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
       <div className="flex flex-col gap-4">
         <RecordSection title="Details"><WorkItemContent content={item.content} /></RecordSection>
