@@ -5,6 +5,10 @@ import { PrimaryButton, inputCls } from "../components/ui";
 import { useAllowedUsers } from "../lib/hooks";
 import { addAllowedUser, isWorkspaceAdmin, normalizeEmail, removeAllowedUser } from "../lib/store";
 import { PIcon } from "../components/icons";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../firebase";
+import { functions } from "../firebase";
+import { httpsCallable } from "firebase/functions";
 
 export function SettingsPage({
   userName,
@@ -28,6 +32,7 @@ export function SettingsPage({
     setMessage(null);
     try {
       const normalized = normalizeEmail(email);
+      if (normalized === "rahul@klego.ai") throw new Error("Rahul already has Work Items-only access.");
       await addAllowedUser(normalized, { name: userName, uid: userUid });
       setEmail("");
       setMessage(`${normalized} can now access the CRM.`);
@@ -48,6 +53,21 @@ export function SettingsPage({
       setMessage(`${target} no longer has CRM access.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove user.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRahulReset() {
+    setBusy("rahul-reset");
+    setError(null);
+    setMessage(null);
+    try {
+      await httpsCallable(functions, "prepareRahulPasswordUser")();
+      await sendPasswordResetEmail(auth, "rahul@klego.ai");
+      setMessage("Password reset email sent to rahul@klego.ai. Rahul can use the link to set a new password.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to send Rahul's reset email.");
     } finally {
       setBusy(null);
     }
@@ -99,7 +119,7 @@ export function SettingsPage({
               <div className="overflow-hidden rounded-xl border border-line">
                 <div className="flex items-center justify-between border-b border-line bg-tone px-4 py-3">
                   <span className="font-mono text-[11px] font-bold uppercase tracking-wide text-muted">Allowed users</span>
-                  <span className="font-mono text-[11px] text-faint">{allowedUsers.length + 1} TOTAL</span>
+                  <span className="font-mono text-[11px] text-faint">{allowedUsers.length + 2} TOTAL</span>
                 </div>
                 <div className="divide-y divide-line-soft bg-paper">
                   <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -111,25 +131,38 @@ export function SettingsPage({
                       Admin
                     </span>
                   </div>
-                  {allowedUsers.map((u) => (
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">rahul@klego.ai</p>
+                      <p className="text-xs text-muted">Work Items only · cannot view sales CRM records</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md border border-line bg-tone px-2 py-1 text-xs font-semibold text-muted">Both products · Work Items only</span>
+                      <button type="button" onClick={handleRahulReset} disabled={busy === "rahul-reset"} className="rounded-md px-2 py-1 text-xs font-semibold text-gold-deep hover:bg-gold-soft disabled:opacity-50">{busy === "rahul-reset" ? "Sending…" : "Send password reset"}</button>
+                    </div>
+                  </div>
+                  {allowedUsers.map((u) => {
+                    const anne = normalizeEmail(u.email) === "lewandowskiannm@gmail.com";
+                    return (
                     <div key={u.id} className="flex items-center justify-between gap-3 px-4 py-3">
                       <div>
                         <p className="text-sm font-semibold text-ink">{u.email}</p>
-                        <p className="text-xs text-muted">Member access</p>
+                        <p className="text-xs text-muted">{anne ? "Plan Clarity Work Items only" : "Full CRM member access"}</p>
                       </div>
-                      <button
+                      <div className="flex items-center gap-2">
+                        {anne && <span className="rounded-md border border-line bg-tone px-2 py-1 text-xs font-semibold text-muted">Plan Clarity only</span>}
+                        <button
                         type="button"
                         onClick={() => handleRemove(u.email)}
                         disabled={busy === u.email}
                         className="rounded-md px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger-soft disabled:opacity-50"
                       >
                         Remove
-                      </button>
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                  {allowedUsers.length === 0 && (
-                    <p className="px-4 py-3 text-sm text-muted">No teammates added yet.</p>
-                  )}
+                  );})}
+                  {allowedUsers.length === 0 && <p className="px-4 py-3 text-sm text-muted">No additional full-access teammates.</p>}
                 </div>
               </div>
             </div>
@@ -141,7 +174,7 @@ export function SettingsPage({
             Firebase project <code className="rounded bg-tone px-1 py-0.5 text-xs">founderflow-crm-af1</code>,
             Firestore collections <code className="rounded bg-tone px-1 py-0.5 text-xs">opportunities</code>,{" "}
             <code className="rounded bg-tone px-1 py-0.5 text-xs">activities</code> (append-only),{" "}
-            <code className="rounded bg-tone px-1 py-0.5 text-xs">contacts</code>. Everything runs inside the
+            <code className="rounded bg-tone px-1 py-0.5 text-xs">contacts</code>, and <code className="rounded bg-tone px-1 py-0.5 text-xs">workItems</code> with append-only timeline events. Screenshot files are held in Firebase Storage. Everything runs inside the
             free Spark tier.
           </p>
         </div>

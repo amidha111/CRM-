@@ -1,0 +1,38 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedInVerified() {
+      return request.auth != null
+        && request.auth.token.email_verified
+        && request.auth.token.email is string;
+    }
+
+    function isPlanClarityOnlyUser() {
+      return isSignedInVerified()
+        && request.auth.token.email == 'lewandowskiannm@gmail.com';
+    }
+
+    function hasWorkItemsAccess() {
+      return isSignedInVerified()
+        && (
+          request.auth.token.email == 'amidha111@gmail.com'
+          || request.auth.token.email == 'rahul@klego.ai'
+          || firestore.exists(/databases/(default)/documents/allowedUsers/$(request.auth.token.email))
+        );
+    }
+
+    match /workItems/{workItemId}/{fileName} {
+      allow read: if hasWorkItemsAccess()
+        && (!isPlanClarityOnlyUser()
+          || firestore.get(/databases/(default)/documents/workItems/$(workItemId)).data.product == 'plan_clarity');
+      allow create, update: if hasWorkItemsAccess()
+        && (!isPlanClarityOnlyUser()
+          || !firestore.exists(/databases/(default)/documents/workItems/$(workItemId))
+          || firestore.get(/databases/(default)/documents/workItems/$(workItemId)).data.product == 'plan_clarity')
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedInVerified()
+        && request.auth.token.email == 'amidha111@gmail.com';
+    }
+  }
+}

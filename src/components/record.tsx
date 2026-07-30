@@ -23,6 +23,7 @@ const ENTITY_ICON: Record<string, IconName> = {
   Opportunity: "target",
   Account: "briefcase",
   Contact: "users",
+  "Work Item": "note",
 };
 
 /** SF Lightning-style record header: icon, entity label, title, action buttons, highlight fields. */
