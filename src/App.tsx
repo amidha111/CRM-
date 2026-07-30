@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, DEMO } from "./firebase";
 import { useAccounts, useActivities, useContacts, useOpportunities } from "./lib/hooks";
-import type { Actor } from "./types";
+import type { Actor, WorkItem } from "./types";
 import { Sidebar, type Page } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import type { OpenRecord } from "./components/record";
@@ -18,6 +18,8 @@ import { ContactRecordPage } from "./pages/ContactRecord";
 import { WorkItemsPage } from "./pages/WorkItems";
 import { WorkItemRecordPage } from "./pages/WorkItemRecord";
 import { useWorkItems } from "./lib/workItemHooks";
+import { findWorkItemAssignee } from "./lib/workItemAssignees";
+import { workItemPath, workItemReferenceFromPath } from "./lib/workItemRoutes";
 
 function isPermissionDenied(e: Error | null): boolean {
   return !!e && /permission|insufficient/i.test(e.message);
@@ -33,16 +35,50 @@ const RECORD_HOME: Record<RecordRef["type"], Page> = {
 
 type WorkspaceUser = { name: string; email: string; uid: string };
 
+function useWorkItemRoute() {
+  const [referenceId, setReferenceId] = useState<string | null>(() => workItemReferenceFromPath(window.location.pathname));
+
+  useEffect(() => {
+    const handlePopState = () => setReferenceId(workItemReferenceFromPath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  function open(item: WorkItem) {
+    window.history.pushState({}, "", workItemPath(item.referenceId));
+    setReferenceId(item.referenceId);
+  }
+
+  function close() {
+    if (workItemReferenceFromPath(window.location.pathname)) {
+      window.history.pushState({}, "", "/");
+    }
+    setReferenceId(null);
+  }
+
+  return { referenceId, open, close };
+}
+
+function WorkItemRouteUnavailable({ onBack }: { onBack: () => void }) {
+  return <main className="page-frame">
+    <div className="card mx-auto mt-10 max-w-xl p-8 text-center">
+      <h1 className="text-xl font-bold text-ink">Work Item unavailable</h1>
+      <p className="mt-2 text-sm leading-6 text-muted">This link does not exist, or your signed-in account does not have access to its product.</p>
+      <button type="button" className="toolbar-button mx-auto mt-5" onClick={onBack}>Back to Work Items</button>
+    </div>
+  </main>;
+}
+
 function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: WorkspaceUser; planClarityWorkItemsOnly?: boolean }) {
   const allowedWorkItemProducts = planClarityWorkItemsOnly ? (["plan_clarity"] as const) : (["klego", "plan_clarity"] as const);
-  const [page, setPage] = useState<Page>("dashboard");
+  const workItemRoute = useWorkItemRoute();
+  const [page, setPage] = useState<Page>(() => workItemRoute.referenceId ? "workItems" : "dashboard");
   const [record, setRecord] = useState<RecordRef | null>(null);
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
   const { contacts } = useContacts();
   const { accounts } = useAccounts();
   const { items: workItems, error: workItemsError } = useWorkItems(planClarityWorkItemsOnly ? "plan_clarity" : undefined);
-  const [workItemId, setWorkItemId] = useState<string | null>(null);
 
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
 
@@ -51,6 +87,12 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
     (opps ?? []).forEach((o) => names.add(o.owner));
     return [...names];
   }, [opps, user.name]);
+
+  useEffect(() => {
+    if (!workItemRoute.referenceId) return;
+    setPage("workItems");
+    setRecord(null);
+  }, [workItemRoute.referenceId]);
 
   if (isPermissionDenied(oppError) || isPermissionDenied(workItemsError)) {
     return <SignIn denied />;
@@ -67,10 +109,11 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
   function navigate(p: Page) {
     setPage(p);
     setRecord(null);
-    setWorkItemId(null);
+    workItemRoute.close();
   }
 
   const openRecord: OpenRecord = (type, id) => {
+    workItemRoute.close();
     setPage(RECORD_HOME[type]);
     setRecord({ type, id });
   };
@@ -125,13 +168,13 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
   }
 
   const recordView = record ? renderRecord(record) : null;
-  const workItem = workItemId ? workItems.find((item) => item.id === workItemId) : null;
-  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onBack={() => setWorkItemId(null)} /> : null;
+  const workItem = workItemRoute.referenceId ? workItems.find((item) => item.referenceId === workItemRoute.referenceId) : null;
+  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onBack={workItemRoute.close} /> : null;
 
   return (
     <div className="dot-grid flex h-screen flex-col overflow-hidden">
       <Sidebar page={page} onNavigate={navigate} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} />
-      {recordView ?? workItemView ?? (
+      {recordView ?? workItemView ?? (workItemRoute.referenceId ? <WorkItemRouteUnavailable onBack={workItemRoute.close} /> : (
         <>
           {page === "opportunities" && (
             <OpportunitiesPage
@@ -155,10 +198,10 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
           {page === "dashboard" && (
             <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
           )}
-          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onOpen={setWorkItemId} />}
+          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onOpen={workItemRoute.open} />}
           {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} userUid={user.uid} />}
         </>
-      )}
+      ))}
     </div>
   );
 }
@@ -166,16 +209,18 @@ function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: Works
 function WorkItemsOnlyWorkspace({ user, planClarityOnly = false }: { user: WorkspaceUser; planClarityOnly?: boolean }) {
   const allowedProducts = planClarityOnly ? (["plan_clarity"] as const) : (["klego", "plan_clarity"] as const);
   const { items, error } = useWorkItems(planClarityOnly ? "plan_clarity" : undefined);
-  const [workItemId, setWorkItemId] = useState<string | null>(null);
+  const workItemRoute = useWorkItemRoute();
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
   if (isPermissionDenied(error)) return <SignIn denied />;
   if (!items) return <div className="dot-grid flex min-h-screen items-center justify-center"><p className="text-muted">Loading work items…</p></div>;
-  const item = workItemId ? items.find((candidate) => candidate.id === workItemId) : null;
+  const item = workItemRoute.referenceId ? items.find((candidate) => candidate.referenceId === workItemRoute.referenceId) : null;
   return <div className="dot-grid flex h-screen flex-col overflow-hidden">
-    <Sidebar page="workItems" onNavigate={() => setWorkItemId(null)} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
+    <Sidebar page="workItems" onNavigate={workItemRoute.close} userName={user.name} userKey={user.email} onSignOut={() => !DEMO && signOut(auth)} workItemsOnly />
     {item
-      ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onBack={() => setWorkItemId(null)} />
-      : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onOpen={setWorkItemId} />}
+      ? <WorkItemRecordPage item={item} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onBack={workItemRoute.close} />
+      : workItemRoute.referenceId
+        ? <WorkItemRouteUnavailable onBack={workItemRoute.close} />
+        : <WorkItemsPage items={items} actor={actor} actorEmail={user.email} allowedProducts={[...allowedProducts]} onOpen={workItemRoute.open} />}
   </div>;
 }
 
@@ -188,7 +233,7 @@ export default function App() {
   }, []);
 
   if (DEMO) {
-    return <FullWorkspace user={{ name: "Amit", email: "demo@planclarity.local", uid: "demo" }} />;
+    return <FullWorkspace user={{ name: "Amit Midha", email: "demo@planclarity.local", uid: "demo" }} />;
   }
 
   if (user === "loading") {
@@ -203,7 +248,9 @@ export default function App() {
     return <SignIn denied={false} />;
   }
 
-  const workspaceUser = { name: user.displayName ?? user.email ?? "User", email: user.email ?? "", uid: user.uid };
+  const email = user.email ?? "";
+  const knownWorkItemUser = findWorkItemAssignee(email);
+  const workspaceUser = { name: knownWorkItemUser?.name ?? user.displayName ?? email ?? "User", email, uid: user.uid };
   const normalizedEmail = workspaceUser.email.trim().toLowerCase();
   if (normalizedEmail === "rahul@klego.ai") return <WorkItemsOnlyWorkspace user={workspaceUser} />;
   if (normalizedEmail === "lewandowskiannm@gmail.com") return <FullWorkspace user={workspaceUser} planClarityWorkItemsOnly />;

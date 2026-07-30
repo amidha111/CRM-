@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
@@ -11,6 +11,11 @@ const adminAuth = getAuth();
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
 const RAHUL_EMAIL = "rahul@klego.ai";
+const ANNE_EMAIL = "lewandowskiannm@gmail.com";
+const WORK_ITEM_ASSIGNEES = new Map([
+  [ADMIN_EMAIL, "Amit Midha"],
+  [RAHUL_EMAIL, "Rahul Panchal"],
+]);
 
 export const prepareRahulPasswordUser = onCall(
   { region: "us-central1" },
@@ -30,10 +35,139 @@ export const prepareRahulPasswordUser = onCall(
         email: RAHUL_EMAIL,
         emailVerified: true,
         password: `${crypto.randomUUID()}-${crypto.randomUUID()}`,
-        displayName: "Rahul",
+        displayName: "Rahul Panchal",
       });
       return { email: RAHUL_EMAIL, created: true };
     }
+  },
+);
+
+async function assertWorkItemsAllowed(request, product) {
+  const token = request.auth?.token;
+  const email = typeof token?.email === "string" ? token.email.trim().toLowerCase() : "";
+  if (!email || !token?.email_verified) {
+    throw new HttpsError("unauthenticated", "Sign in before creating a Work Item.");
+  }
+  if (email !== ADMIN_EMAIL && email !== RAHUL_EMAIL) {
+    const allowed = await db.doc(`allowedUsers/${email}`).get();
+    if (!allowed.exists) {
+      throw new HttpsError("permission-denied", "This account does not have access to Work Items.");
+    }
+  }
+  if (email === ANNE_EMAIL && product !== "plan_clarity") {
+    throw new HttpsError("permission-denied", "This account can only create Plan Clarity Work Items.");
+  }
+  const tokenName = typeof token?.name === "string" ? token.name.trim() : "";
+  return { email, name: WORK_ITEM_ASSIGNEES.get(email) ?? (tokenName || email) };
+}
+
+function oneOf(value, values, field) {
+  if (!values.includes(value)) {
+    throw new HttpsError("invalid-argument", `${field} is invalid.`);
+  }
+  return value;
+}
+
+function optionalUrl(value) {
+  if (value === null || value === "") return null;
+  const url = coerceString(value, "videoUrl", 2_048);
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
+  } catch {
+    throw new HttpsError("invalid-argument", "videoUrl must be a full http or https URL.");
+  }
+  return url;
+}
+
+function workItemContent(value, workItemId) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
+    throw new HttpsError("invalid-argument", "Work Item content is required and cannot exceed 100 blocks.");
+  }
+  return value.map((block) => {
+    if (!block || typeof block !== "object") {
+      throw new HttpsError("invalid-argument", "A Work Item content block is invalid.");
+    }
+    const id = coerceString(block.id, "content block id", 100);
+    if (block.type === "text") {
+      return { id, type: "text", text: coerceString(block.text, "content text", 50_000) };
+    }
+    if (block.type === "image") {
+      const storagePath = coerceString(block.storagePath, "image storagePath", 1_000);
+      if (!storagePath.startsWith(`workItems/${workItemId}/`)) {
+        throw new HttpsError("invalid-argument", "An image does not belong to this Work Item.");
+      }
+      return { id, type: "image", storagePath, name: coerceString(block.name, "image name", 500) };
+    }
+    throw new HttpsError("invalid-argument", "A Work Item content block type is invalid.");
+  });
+}
+
+function formatWorkItemReference(sequenceNumber) {
+  return `WI-${String(sequenceNumber).padStart(4, "0")}`;
+}
+
+export const createWorkItemRecord = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const id = coerceString(request.data?.id, "id", 100);
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) {
+      throw new HttpsError("invalid-argument", "id contains unsupported characters.");
+    }
+    const raw = request.data?.input;
+    if (!raw || typeof raw !== "object") {
+      throw new HttpsError("invalid-argument", "Work Item input is required.");
+    }
+    const product = oneOf(raw.product, ["klego", "plan_clarity"], "product");
+    const actor = await assertWorkItemsAllowed(request, product);
+    const assigneeEmail = coerceString(raw.assigneeEmail, "assigneeEmail", 320).toLowerCase();
+    const assigneeName = WORK_ITEM_ASSIGNEES.get(assigneeEmail);
+    if (!assigneeName) {
+      throw new HttpsError("invalid-argument", "assigneeEmail is not a Work Item assignee.");
+    }
+    const input = {
+      type: oneOf(raw.type, ["bug", "feature"], "type"),
+      product,
+      subject: coerceString(raw.subject, "subject", 500),
+      content: workItemContent(raw.content, id),
+      videoUrl: optionalUrl(raw.videoUrl),
+      priority: oneOf(raw.priority, ["low", "medium", "high"], "priority"),
+      status: oneOf(raw.status, ["open", "in_progress", "ready_for_review", "closed"], "status"),
+      assigneeEmail,
+      assigneeName,
+    };
+    const itemRef = db.doc(`workItems/${id}`);
+    const counterRef = db.doc("systemCounters/workItems");
+    const eventRef = itemRef.collection("events").doc();
+    const result = await db.runTransaction(async (transaction) => {
+      const [item, counter] = await Promise.all([transaction.get(itemRef), transaction.get(counterRef)]);
+      if (item.exists) throw new HttpsError("already-exists", "This Work Item already exists.");
+      const previous = counter.exists ? counter.get("lastNumber") : 0;
+      if (!Number.isSafeInteger(previous) || previous < 0) {
+        throw new HttpsError("internal", "The Work Item number counter is invalid.");
+      }
+      const sequenceNumber = previous + 1;
+      const referenceId = formatWorkItemReference(sequenceNumber);
+      transaction.set(counterRef, { lastNumber: sequenceNumber, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      transaction.set(itemRef, {
+        ...input,
+        sequenceNumber,
+        referenceId,
+        createdByEmail: actor.email,
+        createdByName: actor.name,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(eventRef, {
+        kind: "system",
+        body: `Created this ${input.type}.`,
+        actorEmail: actor.email,
+        actorName: actor.name,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return { referenceId, sequenceNumber };
+    });
+    return result;
   },
 );
 

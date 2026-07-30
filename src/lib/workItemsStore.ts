@@ -13,7 +13,9 @@ import {
   type QuerySnapshot,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, DEMO, storage } from "../firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, DEMO, functions, storage } from "../firebase";
+import { findWorkItemAssignee } from "./workItemAssignees";
 import {
   WORK_ITEM_PRIORITY_LABELS,
   WORK_ITEM_PRODUCT_LABELS,
@@ -39,8 +41,11 @@ function toDate(value: unknown): Date {
 
 function snapToWorkItem(snap: DocumentSnapshot): WorkItem {
   const data = snap.data({ serverTimestamps: "estimate" })!;
+  const knownAssignee = findWorkItemAssignee(data.assigneeEmail ?? "");
   return {
     id: snap.id,
+    sequenceNumber: data.sequenceNumber ?? 0,
+    referenceId: data.referenceId ?? snap.id,
     type: data.type ?? "bug",
     product: data.product ?? "plan_clarity",
     subject: data.subject ?? "Untitled work item",
@@ -49,7 +54,7 @@ function snapToWorkItem(snap: DocumentSnapshot): WorkItem {
     priority: data.priority ?? "medium",
     status: data.status ?? "open",
     assigneeEmail: data.assigneeEmail ?? "",
-    assigneeName: data.assigneeName ?? "Unassigned",
+    assigneeName: knownAssignee?.name ?? data.assigneeName ?? "Unassigned",
     createdByEmail: data.createdByEmail ?? "",
     createdByName: data.createdByName ?? "Unknown",
     createdAt: toDate(data.createdAt),
@@ -117,22 +122,10 @@ function eventData(kind: WorkItemEvent["kind"], body: string, actor: Actor, acto
 export async function createWorkItem(
   id: string,
   input: WorkItemInput,
-  actor: Actor,
-  actorEmail: string,
 ): Promise<void> {
   if (DEMO) return;
-  const batch = writeBatch(db);
-  const itemRef = doc(db, "workItems", id);
-  batch.set(itemRef, {
-    ...input,
-    createdByEmail: actorEmail,
-    createdByName: actor.name,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  const eventRef = doc(collection(db, "workItems", id, "events"));
-  batch.set(eventRef, eventData("system", `Created this ${WORK_ITEM_TYPE_LABELS[input.type].toLowerCase()}.`, actor, actorEmail));
-  await batch.commit();
+  const create = httpsCallable(functions, "createWorkItemRecord");
+  await create({ id, input });
 }
 
 function changeSummary(before: WorkItem, after: WorkItemInput): string {

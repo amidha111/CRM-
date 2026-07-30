@@ -40,7 +40,7 @@ export function WorkItemsPage({
   items: WorkItem[];
   actor: Actor;
   actorEmail: string;
-  onOpen: (id: string) => void;
+  onOpen: (item: WorkItem) => void;
   allowedProducts?: WorkItemProduct[];
 }) {
   const [search, setSearch] = useState("");
@@ -85,8 +85,8 @@ export function WorkItemsPage({
             <thead><tr className="border-b border-line bg-tone/70 text-left font-mono text-[11px] font-semibold uppercase tracking-wide text-muted">
               <th className="px-5 py-3.5">Subject</th><th className="px-3 py-3.5">Type</th><th className="px-3 py-3.5">Product</th><th className="px-3 py-3.5">Priority</th><th className="px-3 py-3.5">Status</th><th className="px-3 py-3.5">Assigned To</th><th className="px-5 py-3.5 text-right">Updated</th>
             </tr></thead>
-            <tbody>{filtered.map((item) => <tr key={item.id} onClick={() => onOpen(item.id)} className="cursor-pointer border-b border-line-soft last:border-0 hover:bg-gold-soft/35">
-              <td className="px-5 py-4 font-semibold text-gold-deep">{item.subject}</td>
+            <tbody>{filtered.map((item) => <tr key={item.id} onClick={() => onOpen(item)} className="cursor-pointer border-b border-line-soft last:border-0 hover:bg-gold-soft/35">
+              <td className="px-5 py-4"><span className="block font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">{item.referenceId}</span><span className="mt-1 block font-semibold text-gold-deep">{item.subject}</span></td>
               <td className="px-3 py-4"><WorkItemBadge value={item.type} kind="type" /></td>
               <td className="px-3 py-4"><WorkItemBadge value={item.product} kind="product" /></td>
               <td className="px-3 py-4"><WorkItemBadge value={item.priority} kind="priority" /></td>

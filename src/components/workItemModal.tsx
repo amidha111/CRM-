@@ -75,7 +75,7 @@ export function WorkItemModal({
         assigneeName: assignee.name,
       };
       if (item) await updateWorkItem(item, input, actor, actorEmail);
-      else await createWorkItem(id, input, actor, actorEmail);
+      else await createWorkItem(id, input);
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to save this work item.");

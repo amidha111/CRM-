@@ -80,8 +80,8 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
   }
 
   return <main className="page-frame min-w-0">
-    <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={item.subject} /></div>
-    <RecordHeader icon="note" entity="Work Item" title={item.subject} actions={<>
+    <div className="mb-3"><Breadcrumb list="Work Items" onBack={onBack} current={`${item.referenceId} · ${item.subject}`} /></div>
+    <RecordHeader icon="note" entity="Work Item" reference={item.referenceId} title={item.subject} actions={<>
       <label className="flex items-center gap-2">
         <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">Assigned to</span>
         <select

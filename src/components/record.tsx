@@ -30,12 +30,14 @@ const ENTITY_ICON: Record<string, IconName> = {
 export function RecordHeader({
   icon,
   entity,
+  reference,
   title,
   actions,
   highlights,
 }: {
   icon: string;
   entity: string;
+  reference?: string;
   title: string;
   actions?: ReactNode;
   highlights: { label: string; value: ReactNode }[];
@@ -49,7 +51,7 @@ export function RecordHeader({
             <PIcon name={ENTITY_ICON[entity] ?? "target"} size={21} sw={1.9} />
           </span>
           <div className="min-w-0">
-            <p className="page-kind">{entity}</p>
+            <p className="page-kind">{entity}{reference ? ` · ${reference}` : ""}</p>
             <div className="flex items-center gap-2">
               <h1 className="min-w-0 break-words text-[22px] font-bold leading-tight tracking-[-0.015em] text-ink">{title}</h1>
               <PIcon name="star" size={16} className="text-gold" />
