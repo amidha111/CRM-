@@ -33,14 +33,15 @@ const RECORD_HOME: Record<RecordRef["type"], Page> = {
 
 type WorkspaceUser = { name: string; email: string; uid: string };
 
-function FullWorkspace({ user }: { user: WorkspaceUser }) {
+function FullWorkspace({ user, planClarityWorkItemsOnly = false }: { user: WorkspaceUser; planClarityWorkItemsOnly?: boolean }) {
+  const allowedWorkItemProducts = planClarityWorkItemsOnly ? (["plan_clarity"] as const) : (["klego", "plan_clarity"] as const);
   const [page, setPage] = useState<Page>("dashboard");
   const [record, setRecord] = useState<RecordRef | null>(null);
   const { opps, error: oppError } = useOpportunities();
   const { activities } = useActivities();
   const { contacts } = useContacts();
   const { accounts } = useAccounts();
-  const { items: workItems, error: workItemsError } = useWorkItems();
+  const { items: workItems, error: workItemsError } = useWorkItems(planClarityWorkItemsOnly ? "plan_clarity" : undefined);
   const [workItemId, setWorkItemId] = useState<string | null>(null);
 
   const actor: Actor = useMemo(() => ({ name: user.name, uid: user.uid }), [user]);
@@ -125,7 +126,7 @@ function FullWorkspace({ user }: { user: WorkspaceUser }) {
 
   const recordView = record ? renderRecord(record) : null;
   const workItem = workItemId ? workItems.find((item) => item.id === workItemId) : null;
-  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} onBack={() => setWorkItemId(null)} /> : null;
+  const workItemView = workItem ? <WorkItemRecordPage item={workItem} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onBack={() => setWorkItemId(null)} /> : null;
 
   return (
     <div className="dot-grid flex h-screen flex-col overflow-hidden">
@@ -154,7 +155,7 @@ function FullWorkspace({ user }: { user: WorkspaceUser }) {
           {page === "dashboard" && (
             <DashboardPage opps={opps} actor={actor} onOpenOpp={(id) => openRecord("opportunity", id)} />
           )}
-          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} onOpen={setWorkItemId} />}
+          {page === "workItems" && <WorkItemsPage items={workItems} actor={actor} actorEmail={user.email} allowedProducts={[...allowedWorkItemProducts]} onOpen={setWorkItemId} />}
           {page === "settings" && <SettingsPage userName={user.name} userEmail={user.email} userUid={user.uid} />}
         </>
       )}
@@ -205,6 +206,6 @@ export default function App() {
   const workspaceUser = { name: user.displayName ?? user.email ?? "User", email: user.email ?? "", uid: user.uid };
   const normalizedEmail = workspaceUser.email.trim().toLowerCase();
   if (normalizedEmail === "rahul@klego.ai") return <WorkItemsOnlyWorkspace user={workspaceUser} />;
-  if (normalizedEmail === "lewandowskiannm@gmail.com") return <WorkItemsOnlyWorkspace user={workspaceUser} planClarityOnly />;
+  if (normalizedEmail === "lewandowskiannm@gmail.com") return <FullWorkspace user={workspaceUser} planClarityWorkItemsOnly />;
   return <FullWorkspace user={workspaceUser} />;
 }

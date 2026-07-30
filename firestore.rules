@@ -33,8 +33,7 @@ service cloud.firestore {
 
     function hasFullAccess() {
       return isAllowedUser()
-        && !isWorkItemsOnlyUser()
-        && !isPlanClarityOnlyUser();
+        && !isWorkItemsOnlyUser();
     }
 
     function hasWorkItemsAccess() {

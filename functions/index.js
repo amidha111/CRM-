@@ -11,7 +11,6 @@ const adminAuth = getAuth();
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
 const RAHUL_EMAIL = "rahul@klego.ai";
-const ANNE_EMAIL = "lewandowskiannm@gmail.com";
 
 export const prepareRahulPasswordUser = onCall(
   { region: "us-central1" },
@@ -45,7 +44,7 @@ async function assertAllowed(request) {
     throw new HttpsError("permission-denied", "This account does not have access to Plan Clarity.");
   }
   if (email === ADMIN_EMAIL) return;
-  if (email === ANNE_EMAIL || email === RAHUL_EMAIL) {
+  if (email === RAHUL_EMAIL) {
     throw new HttpsError("permission-denied", "This account only has access to Work Items.");
   }
   const allowed = await db.doc(`allowedUsers/${email}`).get();
