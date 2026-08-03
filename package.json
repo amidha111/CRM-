@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test:hosting-security": "node --test tests/hosting-security.test.mjs",
+    "test:work-item-assignee": "node --test tests/work-item-assignee.test.mjs",
     "test:security-rules": "node --test tests/security-rules.test.mjs"
   },
   "dependencies": {

@@ -16,6 +16,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { deleteObject, getBytes, ref, uploadBytes } from "firebase/storage";
 
@@ -25,6 +26,7 @@ const PROJECT_ID = "founderflow-crm-af1";
 const ADMIN = { uid: "admin-uid", email: "amidha111@gmail.com", email_verified: true };
 const ANN = { uid: "ann-uid", email: "lewandowskiannm@gmail.com", email_verified: true };
 const RAHUL = { uid: "rahul-uid", email: "rahul@klego.ai", email_verified: true };
+const NIKITA = { uid: "nikita-uid", email: "nikita@planclarity.ai", email_verified: true };
 const DISABLED = { uid: "disabled-uid", email: "disabled@example.com", email_verified: true };
 const UNLISTED = { uid: "stranger-uid", email: "stranger@example.com", email_verified: true };
 
@@ -84,13 +86,22 @@ before(async () => {
         workItemProducts: ["klego", "plan_clarity"], canAssignWorkItems: true,
         addedBy: ADMIN.uid, addedByName: "Amit Midha", createdAt: now, updatedAt: now,
       }),
+      setDoc(doc(db, "allowedUsers", NIKITA.email), {
+        email: NIKITA.email, displayName: "Nikita Selmenskih", disabled: false, accessRole: "work_items_only",
+        workItemProducts: ["plan_clarity"], canAssignWorkItems: true,
+        addedBy: ADMIN.uid, addedByName: "Amit Midha", createdAt: now, updatedAt: now,
+      }),
       setDoc(doc(db, "allowedUsers", DISABLED.email), {
         email: DISABLED.email, displayName: "Disabled User", disabled: true, accessRole: "full",
         workItemProducts: ["klego", "plan_clarity"], canAssignWorkItems: false,
         addedBy: ADMIN.uid, addedByName: "Amit Midha", createdAt: now, updatedAt: now,
       }),
       setDoc(doc(db, "accounts", "account-1"), { name: "Fixture", website: null, createdAt: now, updatedAt: now }),
-      setDoc(doc(db, "workItems", "plan-item"), workItem("plan_clarity", "WI-0001")),
+      setDoc(doc(db, "workItems", "plan-item"), {
+        ...workItem("plan_clarity", "WI-0001"),
+        assigneeEmail: NIKITA.email,
+        assigneeName: "Nikita Selmenskih",
+      }),
       setDoc(doc(db, "workItems", "klego-item"), workItem("klego", "WI-0002")),
     ]);
     const bypassStorage = context.storage();
@@ -98,6 +109,24 @@ before(async () => {
     await uploadBytes(ref(bypassStorage, "workItems/klego-item/legacy.png"), new Uint8Array([1, 2, 3]), { contentType: "image/png" });
     await uploadBytes(ref(bypassStorage, "workItems/klego-item/admin-delete.png"), new Uint8Array([1]), { contentType: "image/png" });
   });
+});
+
+test("Nikita can edit Plan Clarity Work Items with an event but cannot access Klego or sales CRM", async () => {
+  const db = authContext(NIKITA).firestore();
+  await assertFails(getDoc(doc(db, "accounts", "account-1")));
+  await assertSucceeds(getDoc(doc(db, "workItems", "plan-item")));
+  await assertFails(getDoc(doc(db, "workItems", "klego-item")));
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, "workItems", "plan-item"), { status: "in_progress", updatedAt: serverTimestamp() });
+  batch.set(doc(collection(db, "workItems", "plan-item", "events")), {
+    kind: "system",
+    body: "Updated status from Open to In Progress.",
+    actorEmail: NIKITA.email,
+    actorName: "Nikita Selmenskih",
+    createdAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
 });
 
 after(async () => {

@@ -10,6 +10,7 @@ import type {
   WorkItemType,
 } from "../types";
 import { createWorkItem, newWorkItemId, updateWorkItem } from "../lib/workItemsStore";
+import { assigneeForWorkItemSave } from "../lib/workItemAssignees";
 import {
   draftContent,
   saveDraftContent,
@@ -64,7 +65,7 @@ export function WorkItemModal({
     try {
       const id = item?.id ?? newWorkItemId();
       const savedContent = await saveDraftContent(id, content, product);
-      const assignee = assignees.find((person) => person.email === assigneeEmail) ?? assignees[0];
+      const assignee = assigneeForWorkItemSave(item, assigneeEmail, assignees);
       if (!assignee) throw new Error("No enabled Work Item assignee is available.");
       const input: WorkItemInput = {
         type,

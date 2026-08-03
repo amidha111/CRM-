@@ -1,13 +1,14 @@
-export const WORK_ITEM_ASSIGNEES = [
-  { email: "amidha111@gmail.com", name: "Amit Midha" },
-  { email: "rahul@klego.ai", name: "Rahul Panchal" },
-] as const;
+import type { WorkItemAssignee } from "../types";
 
-export function findWorkItemAssignee(email: string) {
-  const normalized = email.trim().toLowerCase();
-  return WORK_ITEM_ASSIGNEES.find((person) => person.email === normalized);
-}
+type AssignedWorkItem = Pick<WorkItemAssignee, "email" | "name">;
 
-export function workItemAssignee(email: string) {
-  return findWorkItemAssignee(email) ?? WORK_ITEM_ASSIGNEES[0];
+export function assigneeForWorkItemSave(
+  item: { assigneeEmail: string; assigneeName: string } | undefined,
+  selectedEmail: string,
+  assignees: WorkItemAssignee[],
+): WorkItemAssignee | null {
+  if (item && selectedEmail === item.assigneeEmail) {
+    return { email: item.assigneeEmail, name: item.assigneeName } satisfies AssignedWorkItem;
+  }
+  return assignees.find((person) => person.email === selectedEmail) ?? assignees[0] ?? null;
 }
