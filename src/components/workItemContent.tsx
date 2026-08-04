@@ -1,13 +1,19 @@
-import { useEffect, useState, type ClipboardEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react";
 import type { WorkItemContentBlock } from "../types";
 import type { WorkItemProduct } from "../types";
-import { resolveWorkItemImageUrl, uploadWorkItemImage } from "../lib/workItemsStore";
+import { resolveWorkItemAttachmentUrl, uploadWorkItemAttachment } from "../lib/workItemsStore";
+import {
+  formatAttachmentSize,
+  validateWorkItemAttachment,
+  WORK_ITEM_FILE_ACCEPT,
+} from "../lib/workItemFiles";
 import { PIcon } from "./icons";
 import { inputCls } from "./ui";
 
 export type DraftWorkItemContentBlock =
   | { id: string; type: "text"; text: string }
-  | { id: string; type: "image"; storagePath?: string; name: string; file?: File; previewUrl?: string };
+  | { id: string; type: "image"; storagePath?: string; name: string; file?: File; previewUrl?: string }
+  | { id: string; type: "file"; storagePath?: string; name: string; contentType: string; size: number; file?: File };
 
 function blockId(): string {
   return typeof crypto !== "undefined" && crypto.randomUUID
@@ -31,10 +37,19 @@ export async function saveDraftContent(
       if (block.text.trim()) saved.push({ id: block.id, type: "text", text: block.text.trim() });
       continue;
     }
-    if (block.storagePath) {
+    if (block.type === "image" && block.storagePath) {
       saved.push({ id: block.id, type: "image", storagePath: block.storagePath, name: block.name });
+    } else if (block.type === "file" && block.storagePath) {
+      saved.push({
+        id: block.id,
+        type: "file",
+        storagePath: block.storagePath,
+        name: block.name,
+        contentType: block.contentType,
+        size: block.size,
+      });
     } else if (block.file) {
-      const uploaded = await uploadWorkItemImage(workItemId, product, block.file);
+      const uploaded = await uploadWorkItemAttachment(workItemId, product, block.file);
       saved.push({ ...uploaded, id: block.id });
     }
   }
@@ -46,7 +61,7 @@ function StoredImage({ storagePath, name, className = "" }: { storagePath: strin
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let live = true;
-    resolveWorkItemImageUrl(storagePath)
+    resolveWorkItemAttachmentUrl(storagePath)
       .then((next) => live && setUrl(next))
       .catch(() => live && setFailed(true));
     return () => {
@@ -59,6 +74,41 @@ function StoredImage({ storagePath, name, className = "" }: { storagePath: strin
   return <img src={url} alt={name} decoding="async" className={`block h-auto max-h-[560px] w-auto max-w-full rounded-lg border border-line object-contain ${className}`} />;
 }
 
+function StoredFile({ block, compact = false }: { block: Extract<WorkItemContentBlock, { type: "file" }>; compact?: boolean }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    resolveWorkItemAttachmentUrl(block.storagePath)
+      .then((next) => live && setUrl(next))
+      .catch(() => live && setFailed(true));
+    return () => {
+      live = false;
+    };
+  }, [block.storagePath]);
+
+  return (
+    <div className={`flex min-w-0 items-center gap-3 rounded-lg border border-line bg-paper ${compact ? "p-3 pr-12" : "p-4"}`}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gold-soft text-gold-deep">
+        <PIcon name="paperclip" size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-ink">{block.name}</span>
+        <span className="block text-xs text-muted">{formatAttachmentSize(block.size)}</span>
+      </span>
+      {failed ? (
+        <span className="text-xs font-semibold text-danger">Unavailable</span>
+      ) : url ? (
+        <a className="shrink-0 text-xs font-semibold text-gold-deep hover:underline" href={url} target="_blank" rel="noreferrer">
+          Download
+        </a>
+      ) : (
+        <span className="h-3 w-14 animate-pulse rounded bg-tone" />
+      )}
+    </div>
+  );
+}
+
 export function WorkItemDetailsEditor({
   blocks,
   onChange,
@@ -66,6 +116,9 @@ export function WorkItemDetailsEditor({
   blocks: DraftWorkItemContentBlock[];
   onChange: (blocks: DraftWorkItemContentBlock[]) => void;
 }) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
   function updateText(index: number, text: string) {
     onChange(blocks.map((block, i) => (i === index && block.type === "text" ? { ...block, text } : block)));
   }
@@ -88,6 +141,43 @@ export function WorkItemDetailsEditor({
     onChange([...blocks.slice(0, index + 1), ...inserted, ...blocks.slice(index + 1)]);
   }
 
+  function handleFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (!files.length) return;
+    setAttachmentError(null);
+    const inserted: DraftWorkItemContentBlock[] = [];
+    try {
+      for (const file of files) {
+        const type = validateWorkItemAttachment(file);
+        if (type === "image") {
+          inserted.push({
+            id: blockId(),
+            type: "image",
+            name: file.name || "Attached image",
+            file,
+            previewUrl: URL.createObjectURL(file),
+          });
+        } else {
+          inserted.push({
+            id: blockId(),
+            type: "file",
+            name: file.name || "Attached file",
+            contentType: file.type,
+            size: file.size,
+            file,
+          });
+        }
+      }
+      onChange([...blocks, ...inserted]);
+    } catch (reason) {
+      inserted.forEach((block) => {
+        if (block.type === "image" && block.previewUrl) URL.revokeObjectURL(block.previewUrl);
+      });
+      setAttachmentError(reason instanceof Error ? reason.message : "Unable to attach this file.");
+    }
+  }
+
   function removeBlock(index: number) {
     const removed = blocks[index];
     if (removed.type === "image" && removed.previewUrl) URL.revokeObjectURL(removed.previewUrl);
@@ -99,7 +189,7 @@ export function WorkItemDetailsEditor({
     <div className="overflow-hidden rounded-lg border border-line bg-tone/40">
       <div className="flex items-center gap-2 border-b border-line bg-paper px-3 py-2 text-xs text-muted">
         <PIcon name="note" size={14} />
-        Write the steps and paste screenshots directly into any text box.
+        Write the steps, paste screenshots, or attach supporting files.
       </div>
       <div className="flex flex-col gap-3 p-3">
         {blocks.map((block, index) =>
@@ -112,7 +202,7 @@ export function WorkItemDetailsEditor({
               onChange={(event) => updateText(index, event.target.value)}
               onPaste={(event) => handlePaste(index, event)}
             />
-          ) : (
+          ) : block.type === "image" ? (
             <div key={block.id} className="relative rounded-lg border border-line bg-paper p-3">
               {block.previewUrl ? (
                 <img src={block.previewUrl} alt={block.name} className="max-h-80 w-auto max-w-full rounded-md object-contain" />
@@ -128,15 +218,51 @@ export function WorkItemDetailsEditor({
                 <PIcon name="x" size={13} sw={2.2} />
               </button>
             </div>
+          ) : (
+            <div key={block.id} className="relative">
+              {block.storagePath ? (
+                <StoredFile block={{ ...block, storagePath: block.storagePath }} compact />
+              ) : (
+                <div className="flex min-w-0 items-center gap-3 rounded-lg border border-line bg-paper p-3 pr-12">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gold-soft text-gold-deep">
+                    <PIcon name="paperclip" size={18} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ink">{block.name}</span>
+                    <span className="block text-xs text-muted">{formatAttachmentSize(block.size)}</span>
+                  </span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => removeBlock(index)}
+                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-line bg-paper text-danger shadow-sm hover:bg-danger-soft"
+                title="Remove file"
+              >
+                <PIcon name="x" size={13} sw={2.2} />
+              </button>
+            </div>
           ),
         )}
-        <button
-          type="button"
-          onClick={() => onChange([...blocks, { id: blockId(), type: "text", text: "" }])}
-          className="self-start text-xs font-semibold text-gold-deep hover:underline"
-        >
-          + Add another text step
-        </button>
+        {attachmentError && <p className="rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-xs text-danger">{attachmentError}</p>}
+        <div className="flex flex-wrap items-center gap-4">
+          <input ref={fileInput} className="hidden" type="file" multiple accept={WORK_ITEM_FILE_ACCEPT} onChange={handleFiles} />
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold-deep hover:underline"
+          >
+            <PIcon name="paperclip" size={13} />
+            Attach file
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange([...blocks, { id: blockId(), type: "text", text: "" }])}
+            className="text-xs font-semibold text-gold-deep hover:underline"
+          >
+            + Add another text step
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -151,8 +277,10 @@ export function WorkItemContent({ content }: { content: WorkItemContentBlock[] }
           <p key={block.id} className="whitespace-pre-wrap text-sm leading-6 text-ink">
             {block.text}
           </p>
-        ) : (
+        ) : block.type === "image" ? (
           <StoredImage key={block.id} storagePath={block.storagePath} name={block.name} />
+        ) : (
+          <StoredFile key={block.id} block={block} />
         ),
       )}
     </div>

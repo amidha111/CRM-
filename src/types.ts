@@ -238,7 +238,8 @@ export const WORK_ITEM_STATUS_LABELS: Record<WorkItemStatus, string> = {
 
 export type WorkItemContentBlock =
   | { id: string; type: "text"; text: string }
-  | { id: string; type: "image"; storagePath: string; name: string };
+  | { id: string; type: "image"; storagePath: string; name: string }
+  | { id: string; type: "file"; storagePath: string; name: string; contentType: string; size: number };
 
 export interface WorkItem {
   id: string;

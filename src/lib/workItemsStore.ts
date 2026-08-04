@@ -15,6 +15,7 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { httpsCallable } from "firebase/functions";
 import { db, DEMO, functions, storage } from "../firebase";
+import { validateWorkItemAttachment } from "./workItemFiles";
 import {
   WORK_ITEM_PRIORITY_LABELS,
   WORK_ITEM_PRODUCT_LABELS,
@@ -190,32 +191,46 @@ export async function addWorkItemComment(
   await updateDoc(doc(db, "workItems", workItemId), { updatedAt: serverTimestamp() });
 }
 
-export async function uploadWorkItemImage(
+export async function uploadWorkItemAttachment(
   workItemId: string,
   product: WorkItemProduct,
   file: File,
-): Promise<Extract<WorkItemContentBlock, { type: "image" }>> {
-  if (!file.type.startsWith("image/")) throw new Error(`${file.name || "Clipboard item"} is not an image.`);
-  if (file.size > 10 * 1024 * 1024) throw new Error("Images must be smaller than 10 MB.");
+): Promise<Extract<WorkItemContentBlock, { type: "image" | "file" }>> {
+  const blockType = validateWorkItemAttachment(file);
+  const contentType = file.type.toLowerCase();
   let storagePath = `workItems/${workItemId}/demo/${file.name || "pasted-image.png"}`;
   if (!DEMO) {
     const grant = await httpsCallable<
-      { workItemId: string; product: WorkItemProduct; fileName: string; fileSize: number; contentType: string },
+      { workItemId: string; product: WorkItemProduct; fileName: string; fileSize: number; contentType: string; blockType: "image" | "file" },
       { storagePath: string }
     >(functions, "createWorkItemUploadGrant")({
       workItemId,
       product,
       fileName: file.name || "pasted-image.png",
       fileSize: file.size,
-      contentType: file.type,
+      contentType,
+      blockType,
     });
     storagePath = grant.data.storagePath;
-    await uploadBytes(ref(storage, storagePath), file, { contentType: file.type });
+    await uploadBytes(ref(storage, storagePath), file, {
+      contentType,
+      contentDisposition: blockType === "file" ? "attachment" : "inline",
+    });
   }
-  return { id: crypto.randomUUID(), type: "image", storagePath, name: file.name || "Pasted image" };
+  if (blockType === "image") {
+    return { id: crypto.randomUUID(), type: "image", storagePath, name: file.name || "Pasted image" };
+  }
+  return {
+    id: crypto.randomUUID(),
+    type: "file",
+    storagePath,
+    name: file.name || "Attached file",
+    contentType,
+    size: file.size,
+  };
 }
 
-export async function resolveWorkItemImageUrl(storagePath: string): Promise<string> {
+export async function resolveWorkItemAttachmentUrl(storagePath: string): Promise<string> {
   if (DEMO) return "";
   return getDownloadURL(ref(storage, storagePath));
 }

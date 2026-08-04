@@ -49,8 +49,8 @@ export function WorkItemModal({
     event.preventDefault();
     setError(null);
     if (!subject.trim()) return setError("Add a subject.");
-    if (!content.some((block) => block.type === "image" || block.text.trim())) {
-      return setError("Add some details or paste a screenshot.");
+    if (!content.some((block) => block.type !== "text" || block.text.trim())) {
+      return setError("Add some details or an attachment.");
     }
     if (videoUrl.trim()) {
       try {
@@ -113,7 +113,7 @@ export function WorkItemModal({
         <Field label="Subject" required>
           <input className={inputCls} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Short summary of the bug or feature" />
         </Field>
-        <Field label="Details and screenshots" required>
+        <Field label="Details and attachments" required>
           <WorkItemDetailsEditor blocks={content} onChange={setContent} />
         </Field>
         <Field label="Issue explained (video URL)">

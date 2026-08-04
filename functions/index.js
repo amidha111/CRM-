@@ -24,7 +24,23 @@ setGlobalOptions({
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const ALLOWED_FILE_TYPES = new Set([
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/json",
+  "application/rtf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "application/x-zip-compressed",
+]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const DAILY_UPLOAD_LIMIT = 40;
 const DAILY_UPLOAD_BYTES_LIMIT = 100 * 1024 * 1024;
 const DAILY_AI_CALL_LIMIT = 20;
@@ -137,7 +153,7 @@ async function consumeUploadQuota(uid, bytes) {
     const uploadCount = snapshot.exists ? Number(snapshot.get("uploadCount") ?? 0) : 0;
     const uploadBytes = snapshot.exists ? Number(snapshot.get("uploadBytes") ?? 0) : 0;
     if (uploadCount >= DAILY_UPLOAD_LIMIT || uploadBytes + bytes > DAILY_UPLOAD_BYTES_LIMIT) {
-      throw new HttpsError("resource-exhausted", "Your daily screenshot upload allowance has been reached.");
+      throw new HttpsError("resource-exhausted", "Your daily Work Item upload allowance has been reached.");
     }
     transaction.set(quotaRef, {
       uploadCount: uploadCount + 1,
@@ -178,22 +194,27 @@ export const createWorkItemUploadGrant = onCall(
       throw new HttpsError("invalid-argument", "workItemId contains unsupported characters.");
     }
     const product = oneOf(request.data?.product, ["klego", "plan_clarity"], "product");
+    const blockType = oneOf(request.data?.blockType ?? "image", ["image", "file"], "blockType");
     const actor = await assertWorkItemsAllowed(request, product);
     const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading a screenshot.");
+    if (!uid) throw new HttpsError("unauthenticated", "Sign in before uploading a Work Item file.");
     const fileSize = request.data?.fileSize;
-    if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > MAX_IMAGE_BYTES) {
-      throw new HttpsError("invalid-argument", "The screenshot size is invalid.");
+    const maximumBytes = blockType === "image" ? MAX_IMAGE_BYTES : MAX_FILE_BYTES;
+    if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > maximumBytes) {
+      throw new HttpsError("invalid-argument", `The ${blockType} size is invalid.`);
     }
     const contentType = coerceString(request.data?.contentType, "contentType", 100).toLowerCase();
-    if (!ALLOWED_IMAGE_TYPES.has(contentType)) {
+    if (blockType === "image" && !ALLOWED_IMAGE_TYPES.has(contentType)) {
       throw new HttpsError("invalid-argument", "Use a PNG, JPEG, GIF, or WebP screenshot.");
+    }
+    if (blockType === "file" && !ALLOWED_FILE_TYPES.has(contentType)) {
+      throw new HttpsError("invalid-argument", "Use a supported PDF, text, Office, or ZIP file.");
     }
     const originalName = coerceString(request.data?.fileName, "fileName", 500);
     const safeName = originalName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "image";
     const existing = await db.doc(`workItems/${workItemId}`).get();
     if (existing.exists && existing.get("product") !== product) {
-      throw new HttpsError("failed-precondition", "The screenshot product does not match this Work Item.");
+      throw new HttpsError("failed-precondition", "The uploaded file product does not match this Work Item.");
     }
     await consumeUploadQuota(uid, fileSize);
     const grantRef = db.collection("workItemUploadGrants").doc();
@@ -206,6 +227,7 @@ export const createWorkItemUploadGrant = onCall(
       storagePath,
       fileSize,
       contentType,
+      blockType,
       createdAt: FieldValue.serverTimestamp(),
       expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000),
     });
@@ -310,7 +332,7 @@ export const getWorkspaceUsage = onCall(
     }));
     const breakdown = new Map();
     fileMetadata.forEach(({ name, bytes }) => {
-      const label = name.startsWith("workItems/") ? "Work Item screenshots" : (name.split("/")[0] || "Other files");
+      const label = name.startsWith("workItems/") ? "Work Item attachments" : (name.split("/")[0] || "Other files");
       const current = breakdown.get(label) ?? { label, bytes: 0, fileCount: 0 };
       current.bytes += bytes;
       current.fileCount += 1;
@@ -506,35 +528,58 @@ function workItemContent(value, workItemId) {
       }
       return { id, type: "image", storagePath, name: coerceString(block.name, "image name", 500) };
     }
+    if (block.type === "file") {
+      const storagePath = coerceString(block.storagePath, "file storagePath", 1_000);
+      if (!storagePath.startsWith(`workItems/${workItemId}/`)) {
+        throw new HttpsError("invalid-argument", "A file does not belong to this Work Item.");
+      }
+      const contentType = coerceString(block.contentType, "file contentType", 100).toLowerCase();
+      if (!ALLOWED_FILE_TYPES.has(contentType)) {
+        throw new HttpsError("invalid-argument", "A Work Item file type is invalid.");
+      }
+      const size = block.size;
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_FILE_BYTES) {
+        throw new HttpsError("invalid-argument", "A Work Item file size is invalid.");
+      }
+      return {
+        id,
+        type: "file",
+        storagePath,
+        name: coerceString(block.name, "file name", 500),
+        contentType,
+        size,
+      };
+    }
     throw new HttpsError("invalid-argument", "A Work Item content block type is invalid.");
   });
 }
 
-function imageGrantId(storagePath, workItemId) {
+function uploadGrantId(storagePath, workItemId) {
   const match = storagePath.match(new RegExp(`^workItems/${workItemId}/([A-Za-z0-9_-]+)/[^/]+$`));
-  if (!match) throw new HttpsError("invalid-argument", "A screenshot is missing its secure upload grant.");
+  if (!match) throw new HttpsError("invalid-argument", "A Work Item attachment is missing its secure upload grant.");
   return match[1];
 }
 
-function assertValidImageGrant(snapshot, block, workItemId, actorEmail) {
-  if (!snapshot.exists) throw new HttpsError("failed-precondition", "A screenshot upload grant has expired or was already used.");
+function assertValidUploadGrant(snapshot, block, workItemId, actorEmail) {
+  if (!snapshot.exists) throw new HttpsError("failed-precondition", "A Work Item upload grant has expired or was already used.");
   const data = snapshot.data();
   if (
     data.email !== actorEmail
     || data.workItemId !== workItemId
     || data.storagePath !== block.storagePath
+    || (data.blockType != null && data.blockType !== block.type)
     || !data.expiresAt?.toMillis
     || data.expiresAt.toMillis() <= Date.now()
   ) {
-    throw new HttpsError("permission-denied", "A screenshot upload grant is invalid.");
+    throw new HttpsError("permission-denied", "A Work Item upload grant is invalid.");
   }
 }
 
-async function assertUploadedImagesExist(blocks) {
+async function assertUploadedFilesExist(blocks) {
   const bucket = getStorage().bucket("founderflow-crm-af1.firebasestorage.app");
   await Promise.all(blocks.map(async (block) => {
     const [exists] = await bucket.file(block.storagePath).exists();
-    if (!exists) throw new HttpsError("failed-precondition", `Screenshot ${block.name} did not finish uploading.`);
+    if (!exists) throw new HttpsError("failed-precondition", `${block.name} did not finish uploading.`);
   }));
 }
 
@@ -614,9 +659,9 @@ export const createWorkItemRecord = onCall(
       assigneeEmail,
       assigneeName,
     };
-    const imageBlocks = input.content.filter((block) => block.type === "image");
-    const grantRefs = imageBlocks.map((block) => db.doc(`workItemUploadGrants/${imageGrantId(block.storagePath, id)}`));
-    await assertUploadedImagesExist(imageBlocks);
+    const uploadedBlocks = input.content.filter((block) => block.type === "image" || block.type === "file");
+    const grantRefs = uploadedBlocks.map((block) => db.doc(`workItemUploadGrants/${uploadGrantId(block.storagePath, id)}`));
+    await assertUploadedFilesExist(uploadedBlocks);
     const itemRef = db.doc(`workItems/${id}`);
     const counterRef = db.doc("systemCounters/workItems");
     const eventRef = itemRef.collection("events").doc();
@@ -627,7 +672,7 @@ export const createWorkItemRecord = onCall(
         ...grantRefs.map((ref) => transaction.get(ref)),
       ]);
       if (item.exists) throw new HttpsError("already-exists", "This Work Item already exists.");
-      grants.forEach((grant, index) => assertValidImageGrant(grant, imageBlocks[index], id, actor.email));
+      grants.forEach((grant, index) => assertValidUploadGrant(grant, uploadedBlocks[index], id, actor.email));
       const previous = counter.exists ? counter.get("lastNumber") : 0;
       if (!Number.isSafeInteger(previous) || previous < 0) {
         throw new HttpsError("internal", "The Work Item number counter is invalid.");
