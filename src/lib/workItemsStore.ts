@@ -5,8 +5,6 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
-  updateDoc,
   where,
   writeBatch,
   type DocumentSnapshot,
@@ -23,6 +21,7 @@ import {
   WORK_ITEM_TYPE_LABELS,
   type Actor,
   type WorkItem,
+  type WorkItemAttachment,
   type WorkItemContentBlock,
   type WorkItemEvent,
   type WorkItemInput,
@@ -77,6 +76,7 @@ function snapToEvent(snap: DocumentSnapshot): WorkItemEvent {
     id: snap.id,
     kind: data.kind ?? "system",
     body: data.body ?? "",
+    attachments: Array.isArray(data.attachments) ? data.attachments as WorkItemAttachment[] : [],
     actorEmail: data.actorEmail ?? "",
     actorName: data.actorName ?? "Unknown",
     createdAt: toDate(data.createdAt),
@@ -178,17 +178,12 @@ export async function updateWorkItem(
 export async function addWorkItemComment(
   workItemId: string,
   body: string,
-  actor: Actor,
-  actorEmail: string,
+  attachments: WorkItemAttachment[],
 ): Promise<void> {
   if (DEMO) return;
   const clean = body.trim();
-  if (!clean) throw new Error("Write a comment first.");
-  await setDoc(
-    doc(collection(db, "workItems", workItemId, "events")),
-    eventData("comment", clean, actor, actorEmail),
-  );
-  await updateDoc(doc(db, "workItems", workItemId), { updatedAt: serverTimestamp() });
+  if (!clean && !attachments.length) throw new Error("Write a comment or attach a file first.");
+  await httpsCallable(functions, "addWorkItemCommentRecord")({ workItemId, body: clean, attachments });
 }
 
 export async function uploadWorkItemAttachment(
@@ -197,7 +192,7 @@ export async function uploadWorkItemAttachment(
   file: File,
 ): Promise<Extract<WorkItemContentBlock, { type: "image" | "file" }>> {
   const blockType = validateWorkItemAttachment(file);
-  const contentType = file.type.toLowerCase();
+  const contentType = file.type.trim().toLowerCase() || "application/octet-stream";
   let storagePath = `workItems/${workItemId}/demo/${file.name || "pasted-image.png"}`;
   if (!DEMO) {
     const grant = await httpsCallable<

@@ -241,6 +241,8 @@ export type WorkItemContentBlock =
   | { id: string; type: "image"; storagePath: string; name: string }
   | { id: string; type: "file"; storagePath: string; name: string; contentType: string; size: number };
 
+export type WorkItemAttachment = Extract<WorkItemContentBlock, { type: "image" | "file" }>;
+
 export interface WorkItem {
   id: string;
   sequenceNumber: number;
@@ -266,6 +268,7 @@ export interface WorkItemEvent {
   id: string;
   kind: WorkItemEventKind;
   body: string;
+  attachments: WorkItemAttachment[];
   actorEmail: string;
   actorName: string;
   createdAt: Date;

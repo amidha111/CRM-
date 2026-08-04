@@ -16,21 +16,20 @@ test("images remain inline screenshot attachments", () => {
   assert.equal(validateWorkItemAttachment(screenshot), "image");
 });
 
-test("common documents are accepted as downloadable files", () => {
+test("TSV and other documents are accepted as downloadable files", () => {
   const fixtures = [
+    file("agents.tsv", "text/tab-separated-values", 2_000),
     file("brief.pdf", "application/pdf", 1_000_000),
     file("fees.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 2_000_000),
     file("notes.txt", "text/plain", 100),
     file("evidence.zip", "application/zip", 3_000_000),
+    file("custom.data", "", 500),
+    file("installer.exe", "application/x-msdownload", 1_000),
   ];
   fixtures.forEach((fixture) => assert.equal(validateWorkItemAttachment(fixture), "file"));
 });
 
-test("executable, empty, and oversized files are rejected", () => {
-  assert.throws(
-    () => validateWorkItemAttachment(file("installer.exe", "application/x-msdownload", 1_000)),
-    /not a supported file type/,
-  );
+test("empty and oversized files are rejected", () => {
   assert.throws(() => validateWorkItemAttachment(file("empty.pdf", "application/pdf", 0)), /is empty/);
   assert.throws(
     () => validateWorkItemAttachment(file("large.pdf", "application/pdf", 25 * 1024 * 1024 + 1)),

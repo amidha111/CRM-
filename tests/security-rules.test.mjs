@@ -218,7 +218,7 @@ test("new Storage uploads require an exact unexpired grant, path, size, and type
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-1"), {
       uid: ANN.uid, email: ANN.email, workItemId: "plan-item", product: "plan_clarity",
-      storagePath: path, fileSize: 4, contentType: "image/png",
+      storagePath: path, fileSize: 4, contentType: "image/png", blockType: "image",
       createdAt: Timestamp.now(), expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
     });
   });
@@ -230,24 +230,31 @@ test("new Storage uploads require an exact unexpired grant, path, size, and type
   assert.equal((await getBytes(ref(storage, path))).byteLength, 4);
 });
 
-test("Storage grants accept supported Work Item files and reject unsafe types", async () => {
-  const pdfPath = "workItems/plan-item/grant-pdf/specification.pdf";
-  const htmlPath = "workItems/plan-item/grant-html/page.html";
+test("Storage grants accept TSV and arbitrary download files but enforce their block type", async () => {
+  const tsvPath = "workItems/plan-item/grant-tsv/agents.tsv";
+  const binaryPath = "workItems/plan-item/grant-binary/custom.data";
+  const badImagePath = "workItems/plan-item/grant-image/page.html";
   await env.withSecurityRulesDisabled(async (context) => {
     await Promise.all([
-      setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-pdf"), {
+      setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-tsv"), {
         uid: ANN.uid, email: ANN.email, workItemId: "plan-item", product: "plan_clarity",
-        storagePath: pdfPath, fileSize: 4, contentType: "application/pdf", blockType: "file",
+        storagePath: tsvPath, fileSize: 4, contentType: "text/tab-separated-values", blockType: "file",
         createdAt: Timestamp.now(), expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
       }),
-      setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-html"), {
+      setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-binary"), {
         uid: ANN.uid, email: ANN.email, workItemId: "plan-item", product: "plan_clarity",
-        storagePath: htmlPath, fileSize: 4, contentType: "text/html", blockType: "file",
+        storagePath: binaryPath, fileSize: 4, contentType: "application/octet-stream", blockType: "file",
+        createdAt: Timestamp.now(), expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
+      }),
+      setDoc(doc(context.firestore(), "workItemUploadGrants", "grant-image"), {
+        uid: ANN.uid, email: ANN.email, workItemId: "plan-item", product: "plan_clarity",
+        storagePath: badImagePath, fileSize: 4, contentType: "text/html", blockType: "image",
         createdAt: Timestamp.now(), expiresAt: Timestamp.fromMillis(Date.now() + 60_000),
       }),
     ]);
   });
   const storage = authContext(ANN).storage();
-  await assertSucceeds(uploadBytes(ref(storage, pdfPath), new Uint8Array([1, 2, 3, 4]), { contentType: "application/pdf" }));
-  await assertFails(uploadBytes(ref(storage, htmlPath), new Uint8Array([1, 2, 3, 4]), { contentType: "text/html" }));
+  await assertSucceeds(uploadBytes(ref(storage, tsvPath), new Uint8Array([1, 2, 3, 4]), { contentType: "text/tab-separated-values" }));
+  await assertSucceeds(uploadBytes(ref(storage, binaryPath), new Uint8Array([1, 2, 3, 4]), { contentType: "application/octet-stream" }));
+  await assertFails(uploadBytes(ref(storage, badImagePath), new Uint8Array([1, 2, 3, 4]), { contentType: "text/html" }));
 });

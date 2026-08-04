@@ -44,24 +44,11 @@ service firebase.storage {
         && request.resource.size > 0
         && (
           (request.resource.size <= 10 * 1024 * 1024
+            && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.blockType == 'image'
             && request.resource.contentType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
           ||
           (request.resource.size <= 25 * 1024 * 1024
-            && request.resource.contentType in [
-              'application/pdf',
-              'text/plain',
-              'text/csv',
-              'application/json',
-              'application/rtf',
-              'application/msword',
-              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-              'application/vnd.ms-excel',
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-              'application/vnd.ms-powerpoint',
-              'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-              'application/zip',
-              'application/x-zip-compressed'
-            ])
+            && firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.blockType == 'file')
         )
         && (!isPlanClarityOnlyUser()
           || firestore.get(/databases/(default)/documents/workItemUploadGrants/$(grantId)).data.product == 'plan_clarity');

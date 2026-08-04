@@ -1,20 +1,23 @@
-import { useState, type FormEvent } from "react";
-import type { Actor, WorkItem, WorkItemAssignee, WorkItemProduct, WorkItemStatus } from "../types";
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import type { Actor, WorkItem, WorkItemAssignee, WorkItemAttachment, WorkItemProduct, WorkItemStatus } from "../types";
 import { WORK_ITEM_PRODUCT_LABELS } from "../types";
 import { Breadcrumb, RecordHeader, RecordSection } from "../components/record";
 import { PIcon } from "../components/icons";
 import { Avatar, PrimaryButton, inputCls } from "../components/ui";
-import { WorkItemContent, videoEmbedUrl } from "../components/workItemContent";
+import { WorkItemAttachmentList, WorkItemContent, videoEmbedUrl } from "../components/workItemContent";
 import { WorkItemModal } from "../components/workItemModal";
 import { WorkItemBadge } from "./WorkItems";
 import { useWorkItemEvents } from "../lib/workItemHooks";
-import { addWorkItemComment, updateWorkItem } from "../lib/workItemsStore";
+import { addWorkItemComment, updateWorkItem, uploadWorkItemAttachment } from "../lib/workItemsStore";
+import { formatAttachmentSize, validateWorkItemAttachment } from "../lib/workItemFiles";
 import { formatDate, relativeTime } from "../lib/format";
 import { safeHttpUrl } from "../lib/safeUrl";
 
 export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedProducts = ["klego", "plan_clarity"], assignees }: { item: WorkItem; actor: Actor; actorEmail: string; onBack: () => void; allowedProducts?: WorkItemProduct[]; assignees: WorkItemAssignee[] }) {
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+  const commentFileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusBusy, setStatusBusy] = useState(false);
@@ -28,9 +31,29 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
   async function submitComment(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError(null);
-    try { await addWorkItemComment(item.id, comment, actor, actorEmail); setComment(""); }
+    try {
+      const attachments: WorkItemAttachment[] = [];
+      for (const file of commentFiles) attachments.push(await uploadWorkItemAttachment(item.id, item.product, file));
+      await addWorkItemComment(item.id, comment, attachments);
+      setComment("");
+      setCommentFiles([]);
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Unable to add comment."); }
     finally { setBusy(false); }
+  }
+
+  function selectCommentFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = [...(event.target.files ?? [])];
+    event.target.value = "";
+    if (!files.length) return;
+    setError(null);
+    try {
+      files.forEach(validateWorkItemAttachment);
+      if (commentFiles.length + files.length > 20) throw new Error("A comment can include up to 20 files.");
+      setCommentFiles((current) => [...current, ...files]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to attach this file.");
+    }
   }
 
   async function changeStatus(status: WorkItemStatus) {
@@ -137,11 +160,27 @@ export function WorkItemRecordPage({ item, actor, actorEmail, onBack, allowedPro
         <RecordSection title="Timeline">
           <form onSubmit={submitComment} className="mb-5 flex flex-col gap-2">
             <textarea className={`${inputCls} min-h-24 resize-y`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment for the team…" />
+            {commentFiles.length > 0 && <div className="flex flex-col gap-2">
+              {commentFiles.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-tone/40 px-3 py-2">
+                <PIcon name="paperclip" size={14} />
+                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-ink">{file.name}</span>
+                <span className="text-[11px] text-muted">{formatAttachmentSize(file.size)}</span>
+                <button type="button" className="text-danger hover:text-danger/80" title={`Remove ${file.name}`} onClick={() => setCommentFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}>
+                  <PIcon name="x" size={13} sw={2.2} />
+                </button>
+              </div>)}
+            </div>}
+            <div>
+              <input ref={commentFileInput} className="hidden" type="file" multiple onChange={selectCommentFiles} />
+              <button type="button" className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold-deep hover:underline" disabled={busy} onClick={() => commentFileInput.current?.click()}>
+                <PIcon name="paperclip" size={13} /> Attach file
+              </button>
+            </div>
             {(error || eventsError) && <p className="text-xs text-danger">{error || eventsError?.message}</p>}
-            <PrimaryButton type="submit" disabled={busy || !comment.trim()}>{busy ? "Posting…" : "Add Comment"}</PrimaryButton>
+            <PrimaryButton type="submit" disabled={busy || (!comment.trim() && commentFiles.length === 0)}>{busy ? "Posting…" : "Add Comment"}</PrimaryButton>
           </form>
           {!events ? <p className="text-sm text-muted">Loading timeline…</p> : <div className="flex flex-col gap-4">{events.map((entry) => <div key={entry.id} className="flex gap-3">
-            <Avatar name={entry.actorName} size={28} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-semibold">{entry.actorName}</span><span className="text-[11px] text-faint">{relativeTime(entry.createdAt)}</span>{entry.kind === "system" && <span className="rounded bg-tone px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted">System</span>}</div><p className={`mt-1 whitespace-pre-wrap text-sm leading-5 ${entry.kind === "system" ? "text-muted" : "text-ink"}`}>{entry.body}</p></div>
+            <Avatar name={entry.actorName} size={28} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-2"><span className="text-sm font-semibold">{entry.actorName}</span><span className="text-[11px] text-faint">{relativeTime(entry.createdAt)}</span>{entry.kind === "system" && <span className="rounded bg-tone px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted">System</span>}</div>{entry.body && <p className={`mt-1 whitespace-pre-wrap text-sm leading-5 ${entry.kind === "system" ? "text-muted" : "text-ink"}`}>{entry.body}</p>}<WorkItemAttachmentList attachments={entry.attachments} compact /></div>
           </div>)}{events.length === 0 && <p className="text-sm text-muted">No timeline entries yet.</p>}</div>}
         </RecordSection>
       </div>

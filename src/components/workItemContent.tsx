@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react";
-import type { WorkItemContentBlock } from "../types";
+import type { WorkItemAttachment, WorkItemContentBlock } from "../types";
 import type { WorkItemProduct } from "../types";
 import { resolveWorkItemAttachmentUrl, uploadWorkItemAttachment } from "../lib/workItemsStore";
 import {
   formatAttachmentSize,
   validateWorkItemAttachment,
-  WORK_ITEM_FILE_ACCEPT,
 } from "../lib/workItemFiles";
 import { PIcon } from "./icons";
 import { inputCls } from "./ui";
@@ -105,6 +104,19 @@ function StoredFile({ block, compact = false }: { block: Extract<WorkItemContent
       ) : (
         <span className="h-3 w-14 animate-pulse rounded bg-tone" />
       )}
+    </div>
+  );
+}
+
+export function WorkItemAttachmentList({ attachments, compact = false }: { attachments: WorkItemAttachment[]; compact?: boolean }) {
+  if (!attachments.length) return null;
+  return (
+    <div className="mt-2 flex min-w-0 flex-col gap-2">
+      {attachments.map((attachment) => attachment.type === "image" ? (
+        <StoredImage key={attachment.id} storagePath={attachment.storagePath} name={attachment.name} className={compact ? "max-h-64" : ""} />
+      ) : (
+        <StoredFile key={attachment.id} block={attachment} compact={compact} />
+      ))}
     </div>
   );
 }
@@ -246,7 +258,7 @@ export function WorkItemDetailsEditor({
         )}
         {attachmentError && <p className="rounded-md border border-danger/20 bg-danger-soft px-3 py-2 text-xs text-danger">{attachmentError}</p>}
         <div className="flex flex-wrap items-center gap-4">
-          <input ref={fileInput} className="hidden" type="file" multiple accept={WORK_ITEM_FILE_ACCEPT} onChange={handleFiles} />
+          <input ref={fileInput} className="hidden" type="file" multiple onChange={handleFiles} />
           <button
             type="button"
             onClick={() => fileInput.current?.click()}

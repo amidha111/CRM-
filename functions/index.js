@@ -24,21 +24,6 @@ setGlobalOptions({
 const deepseekApiKey = defineSecret("DEEPSEEK_API_KEY");
 const ADMIN_EMAIL = "amidha111@gmail.com";
 const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const ALLOWED_FILE_TYPES = new Set([
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "application/json",
-  "application/rtf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/zip",
-  "application/x-zip-compressed",
-]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const DAILY_UPLOAD_LIMIT = 40;
@@ -207,11 +192,8 @@ export const createWorkItemUploadGrant = onCall(
     if (blockType === "image" && !ALLOWED_IMAGE_TYPES.has(contentType)) {
       throw new HttpsError("invalid-argument", "Use a PNG, JPEG, GIF, or WebP screenshot.");
     }
-    if (blockType === "file" && !ALLOWED_FILE_TYPES.has(contentType)) {
-      throw new HttpsError("invalid-argument", "Use a supported PDF, text, Office, or ZIP file.");
-    }
     const originalName = coerceString(request.data?.fileName, "fileName", 500);
-    const safeName = originalName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "image";
+    const safeName = originalName.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || "file";
     const existing = await db.doc(`workItems/${workItemId}`).get();
     if (existing.exists && existing.get("product") !== product) {
       throw new HttpsError("failed-precondition", "The uploaded file product does not match this Work Item.");
@@ -311,7 +293,22 @@ export const getWorkspaceUsage = onCall(
     await assertAdminRequest(request);
     const bucket = getStorage().bucket("founderflow-crm-af1.firebasestorage.app");
     const [files] = await bucket.getFiles();
-    const workItems = await db.collection("workItems").get();
+    const [workItems, events] = await Promise.all([
+      db.collection("workItems").get(),
+      db.collectionGroup("events").get(),
+    ]);
+    const eventFilePaths = new Map();
+    events.docs.forEach((event) => {
+      const workItemRef = event.ref.parent.parent;
+      const workItemId = workItemRef?.parent.id === "workItems" ? workItemRef.id : null;
+      const attachments = Array.isArray(event.get("attachments")) ? event.get("attachments") : [];
+      if (!workItemId || !attachments.length) return;
+      const paths = eventFilePaths.get(workItemId) ?? new Set();
+      attachments.forEach((attachment) => {
+        if (typeof attachment?.storagePath === "string") paths.add(attachment.storagePath);
+      });
+      eventFilePaths.set(workItemId, paths);
+    });
     const workItemData = workItems.docs.map((record) => ({
       id: record.id,
       referenceId: String(record.get("referenceId") ?? record.id),
@@ -326,7 +323,8 @@ export const getWorkspaceUsage = onCall(
         contentType: String(metadata.contentType ?? "application/octet-stream"),
         updatedAt: metadata.updated ?? null,
         linkedWorkItems: workItemData
-          .filter((workItem) => workItem.content.some((block) => block?.storagePath === file.name))
+          .filter((workItem) => workItem.content.some((block) => block?.storagePath === file.name)
+            || eventFilePaths.get(workItem.id)?.has(file.name))
           .map(({ id, referenceId, subject }) => ({ id, referenceId, subject })),
       };
     }));
@@ -344,7 +342,6 @@ export const getWorkspaceUsage = onCall(
       return [name, snapshot.data().count];
     }));
     const estimateSnapshots = await Promise.all(collectionNames.map((name) => db.collection(name).get()));
-    const events = await db.collectionGroup("events").get();
     const firestoreEstimatedBytes = [...estimateSnapshots.flatMap((snapshot) => snapshot.docs), ...events.docs]
       .reduce((sum, record) => sum + Buffer.byteLength(record.ref.path) + Buffer.byteLength(JSON.stringify(record.data())), 0);
     const gib = 1024 ** 3;
@@ -436,19 +433,35 @@ export const deleteWorkspaceFile = onCall(
     const [exists] = await file.exists();
     if (!exists) throw new HttpsError("not-found", "This file no longer exists.");
 
-    const [workItems, uploadGrants] = await Promise.all([
+    const [workItems, events, uploadGrants] = await Promise.all([
       db.collection("workItems").get(),
+      db.collectionGroup("events").get(),
       db.collection("workItemUploadGrants").where("storagePath", "==", storagePath).get(),
     ]);
-    const linked = workItems.docs.flatMap((record) => {
+    const linkedContent = new Map(workItems.docs.flatMap((record) => {
       const content = Array.isArray(record.get("content")) ? record.get("content") : [];
       const nextContent = content.filter((block) => block?.storagePath !== storagePath);
-      return nextContent.length === content.length ? [] : [{ record, nextContent }];
+      return nextContent.length === content.length ? [] : [[record.id, nextContent]];
+    }));
+    const linkedEvents = events.docs.flatMap((event) => {
+      const attachments = Array.isArray(event.get("attachments")) ? event.get("attachments") : [];
+      const nextAttachments = attachments.filter((attachment) => attachment?.storagePath !== storagePath);
+      return nextAttachments.length === attachments.length ? [] : [{ event, nextAttachments }];
     });
-    for (let start = 0; start < linked.length; start += 200) {
+    const affectedIds = new Set([
+      ...linkedContent.keys(),
+      ...linkedEvents.map(({ event }) => {
+        const workItemRef = event.ref.parent.parent;
+        return workItemRef?.parent.id === "workItems" ? workItemRef.id : null;
+      }).filter(Boolean),
+    ]);
+    const affectedItems = workItems.docs.filter((record) => affectedIds.has(record.id));
+    for (let start = 0; start < affectedItems.length; start += 200) {
       const batch = db.batch();
-      linked.slice(start, start + 200).forEach(({ record, nextContent }) => {
-        batch.update(record.ref, { content: nextContent, updatedAt: FieldValue.serverTimestamp() });
+      affectedItems.slice(start, start + 200).forEach((record) => {
+        const update = { updatedAt: FieldValue.serverTimestamp() };
+        if (linkedContent.has(record.id)) update.content = linkedContent.get(record.id);
+        batch.update(record.ref, update);
         batch.set(record.ref.collection("events").doc(), {
           kind: "system",
           body: `Removed stored file ${storagePath}.`,
@@ -456,6 +469,17 @@ export const deleteWorkspaceFile = onCall(
           actorName: "Amit Midha",
           createdAt: FieldValue.serverTimestamp(),
         });
+      });
+      await batch.commit();
+    }
+    for (let start = 0; start < linkedEvents.length; start += 400) {
+      const batch = db.batch();
+      linkedEvents.slice(start, start + 400).forEach(({ event, nextAttachments }) => {
+        const update = { attachments: nextAttachments };
+        if (!nextAttachments.length && !String(event.get("body") ?? "").trim()) {
+          update.body = "Attachment removed by workspace administrator.";
+        }
+        batch.update(event.ref, update);
       });
       await batch.commit();
     }
@@ -467,8 +491,8 @@ export const deleteWorkspaceFile = onCall(
     await file.delete();
     return {
       storagePath,
-      updatedWorkItems: linked.length,
-      deletedFirestoreRecords: linked.length + uploadGrants.size,
+      updatedWorkItems: affectedItems.length,
+      deletedFirestoreRecords: linkedEvents.length + uploadGrants.size,
     };
   },
 );
@@ -534,9 +558,6 @@ function workItemContent(value, workItemId) {
         throw new HttpsError("invalid-argument", "A file does not belong to this Work Item.");
       }
       const contentType = coerceString(block.contentType, "file contentType", 100).toLowerCase();
-      if (!ALLOWED_FILE_TYPES.has(contentType)) {
-        throw new HttpsError("invalid-argument", "A Work Item file type is invalid.");
-      }
       const size = block.size;
       if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_FILE_BYTES) {
         throw new HttpsError("invalid-argument", "A Work Item file size is invalid.");
@@ -554,6 +575,18 @@ function workItemContent(value, workItemId) {
   });
 }
 
+function workItemAttachments(value, workItemId) {
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new HttpsError("invalid-argument", "Comment attachments must be a list of no more than 20 files.");
+  }
+  if (!value.length) return [];
+  const attachments = workItemContent(value, workItemId);
+  if (attachments.some((block) => block.type === "text")) {
+    throw new HttpsError("invalid-argument", "A comment attachment must be an uploaded file.");
+  }
+  return attachments;
+}
+
 function uploadGrantId(storagePath, workItemId) {
   const match = storagePath.match(new RegExp(`^workItems/${workItemId}/([A-Za-z0-9_-]+)/[^/]+$`));
   if (!match) throw new HttpsError("invalid-argument", "A Work Item attachment is missing its secure upload grant.");
@@ -568,6 +601,7 @@ function assertValidUploadGrant(snapshot, block, workItemId, actorEmail) {
     || data.workItemId !== workItemId
     || data.storagePath !== block.storagePath
     || (data.blockType != null && data.blockType !== block.type)
+    || (block.type === "file" && (data.contentType !== block.contentType || data.fileSize !== block.size))
     || !data.expiresAt?.toMillis
     || data.expiresAt.toMillis() <= Date.now()
   ) {
@@ -700,6 +734,55 @@ export const createWorkItemRecord = onCall(
       return { referenceId, sequenceNumber };
     });
     return result;
+  },
+);
+
+export const addWorkItemCommentRecord = onCall(
+  { region: "us-central1" },
+  async (request) => {
+    const workItemId = coerceString(request.data?.workItemId, "workItemId", 100);
+    if (!/^[A-Za-z0-9_-]+$/.test(workItemId)) {
+      throw new HttpsError("invalid-argument", "workItemId contains unsupported characters.");
+    }
+    const itemRef = db.doc(`workItems/${workItemId}`);
+    const existing = await itemRef.get();
+    if (!existing.exists) throw new HttpsError("not-found", "This Work Item no longer exists.");
+    const product = oneOf(existing.get("product"), ["klego", "plan_clarity"], "product");
+    const actor = await assertWorkItemsAllowed(request, product);
+    if (typeof request.data?.body !== "string") {
+      throw new HttpsError("invalid-argument", "body must be a string.");
+    }
+    const body = request.data.body.trim();
+    if (body.length > 5_000) throw new HttpsError("invalid-argument", "A comment cannot exceed 5,000 characters.");
+    const attachments = workItemAttachments(request.data?.attachments ?? [], workItemId);
+    if (!body && !attachments.length) {
+      throw new HttpsError("invalid-argument", "Write a comment or attach a file first.");
+    }
+    const grantRefs = attachments.map((attachment) => db.doc(`workItemUploadGrants/${uploadGrantId(attachment.storagePath, workItemId)}`));
+    await assertUploadedFilesExist(attachments);
+    const eventRef = itemRef.collection("events").doc();
+    await db.runTransaction(async (transaction) => {
+      const [item, ...grants] = await Promise.all([
+        transaction.get(itemRef),
+        ...grantRefs.map((ref) => transaction.get(ref)),
+      ]);
+      if (!item.exists) throw new HttpsError("not-found", "This Work Item no longer exists.");
+      if (item.get("product") !== product) {
+        throw new HttpsError("failed-precondition", "This Work Item changed while the comment was being added.");
+      }
+      grants.forEach((grant, index) => assertValidUploadGrant(grant, attachments[index], workItemId, actor.email));
+      transaction.set(eventRef, {
+        kind: "comment",
+        body,
+        attachments,
+        actorEmail: actor.email,
+        actorName: actor.name,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(itemRef, { updatedAt: FieldValue.serverTimestamp() });
+      grantRefs.forEach((ref) => transaction.delete(ref));
+    });
+    return { id: eventRef.id };
   },
 );
 
