@@ -11,6 +11,7 @@ import { PIcon } from "../components/icons";
 import { Avatar, EmptyCard, PrimaryButton, inputCls } from "../components/ui";
 import { WorkItemModal } from "../components/workItemModal";
 import { relativeTime } from "../lib/format";
+import { matchesWorkItemVisibility, type WorkItemVisibility } from "../lib/workItemFilters";
 
 export function WorkItemBadge({ value, kind }: { value: string; kind: "type" | "priority" | "status" | "product" }) {
   const tone =
@@ -49,20 +50,36 @@ export function WorkItemsPage({
   const [type, setType] = useState<WorkItemType | "all">("all");
   const [product, setProduct] = useState<WorkItemProduct | "all">("all");
   const [priority, setPriority] = useState<WorkItemPriority | "all">("all");
+  const [visibility, setVisibility] = useState<WorkItemVisibility>("active");
   const [showNew, setShowNew] = useState(false);
 
   const filtered = useMemo(() => items.filter((item) => {
     const query = search.trim().toLowerCase();
     return (!query || `${item.subject} ${item.assigneeName}`.toLowerCase().includes(query))
+      && matchesWorkItemVisibility(item, visibility)
       && (type === "all" || item.type === type)
       && (product === "all" || item.product === product)
       && (priority === "all" || item.priority === priority);
-  }), [items, priority, product, search, type]);
+  }), [items, priority, product, search, type, visibility]);
+
+  const listLabel = visibility === "active" ? "active" : visibility === "resolved" ? "resolved" : "total";
 
   return (
     <div className="page-frame">
-      <PageHeader icon="note" kind="Product Delivery" title="Work Items" meta={`${filtered.length} items · updated now`} actions={
-        <PrimaryButton onClick={() => setShowNew(true)}><PIcon name="plus" size={15} sw={2.2} />New Work Item</PrimaryButton>
+      <PageHeader icon="note" kind="Product Delivery" title="Work Items" meta={`${filtered.length} ${listLabel} items · updated now`} actions={
+        <>
+          <select
+            className={`${inputCls} h-9 w-auto min-w-36 py-1 font-semibold`}
+            value={visibility}
+            onChange={(event) => setVisibility(event.target.value as WorkItemVisibility)}
+            aria-label="Choose which Work Items to show"
+          >
+            <option value="active">Active work</option>
+            <option value="resolved">Resolved only</option>
+            <option value="all">All work</option>
+          </select>
+          <PrimaryButton onClick={() => setShowNew(true)}><PIcon name="plus" size={15} sw={2.2} />New Work Item</PrimaryButton>
+        </>
       } />
       <div className="mb-4 flex flex-wrap items-center gap-2.5">
         <span className="flex h-9 w-full items-center gap-2 rounded-lg border border-line bg-paper px-3 text-sm sm:w-[280px]">
@@ -97,7 +114,7 @@ export function WorkItemsPage({
               <td className="px-5 py-4 text-right text-muted">{relativeTime(item.updatedAt)}</td>
             </tr>)}</tbody>
           </table>
-          {filtered.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted">No work items match these filters.</p>}
+          {filtered.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted">{visibility === "active" ? "No active work items." : "No work items match these filters."}</p>}
         </div>
       )}
       {showNew && <WorkItemModal actor={actor} actorEmail={actorEmail} allowedProducts={allowedProducts} assignees={assignees} onClose={() => setShowNew(false)} />}
